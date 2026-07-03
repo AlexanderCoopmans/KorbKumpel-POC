@@ -7,6 +7,7 @@ import UnoCSS from 'unocss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/KorbKumpel-POC/',
   plugins: [vue(), vueDevTools(), UnoCSS()],
   resolve: {
     alias: {
@@ -14,7 +15,6 @@ export default defineConfig({
     },
   },
   build: {
-    base: '/KorbKumpel-POC/',
     rollupOptions: {
       input: {
         main: 'index.html',
