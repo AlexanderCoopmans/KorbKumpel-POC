@@ -11,8 +11,10 @@
     "deploy": "npm run build && git push origin --delete gh-pages && git add -f dist && git commit -m \"Temporary Build for gh-pages\" && git subtree push --prefix dist origin gh-pages && git reset HEAD~1"
   },
   "dependencies": {
+    "@formkit/auto-animate": "^0.9.0",
     "@vueuse/core": "^14.3.0",
     "pinia": "^3.0.4",
+    "typesense": "^3.0.6",
     "vue": "^3.5.38",
     "vue-router": "^5.1.0"
   },
