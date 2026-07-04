@@ -54,8 +54,8 @@ function swap() {
           <Icon
             v-else
             icon="lucide:shopping-cart"
-            width="20"
-            height="20"
+            width="100%"
+            height="100%"
             class="text-base-content/40"
           />
         </div>

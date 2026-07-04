@@ -1,6 +1,7 @@
 <script setup>
 import { RouterLink } from 'vue-router'
 import { Icon } from '@iconify/vue'
+import logoWithName from '@/assets/logo-and-name.png'
 
 /**
  * Startseite (Home) view.
@@ -14,9 +15,7 @@ import { Icon } from '@iconify/vue'
   <section class="hero bg-base-100 min-h-[70vh]">
     <div class="hero-content text-center">
       <div class="max-w-md flex flex-col items-center gap-6">
-        <div class="rounded-full bg-primary/10 p-6">
-          <Icon icon="lucide:shopping-cart" width="56" height="56" class="text-primary" />
-        </div>
+        <img :src="logoWithName" alt="KorbKumpel Logo" class="w-64 h-auto" />
         <div class="space-y-4">
           <h1 class="text-4xl font-bold">Willkommen bei KorbKumpel</h1>
           <p class="text-base-content/70">

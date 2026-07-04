@@ -66,7 +66,7 @@ export function useOptimization() {
     const filterBy = marketStore.filterExpression
     const baseParams = {
       q: item.name,
-      query_by: 'name,brand,retailPrice,supermarket',
+      query_by: 'name,brand,supermarket',
       sort_by: 'basePrice:asc,_text_match:desc',
       per_page: 10,
     }
@@ -80,7 +80,7 @@ export function useOptimization() {
     if (item.brand) {
       const genericParams = {
         ...baseParams,
-        query_by: 'name,retailPrice,supermarket',
+        query_by: 'name,supermarket',
       }
       const generic = await runQuery(genericParams)
       candidates = [...candidates, ...generic]

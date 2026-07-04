@@ -1,6 +1,7 @@
 <script setup>
 import { RouterLink } from 'vue-router'
 import { Icon } from '@iconify/vue'
+import logo from '@/assets/logo.png'
 
 /**
  * Bottom navigation dock (mobile-first).
@@ -17,9 +18,9 @@ import { Icon } from '@iconify/vue'
   >
     <RouterLink
       v-for="item in [
-        { to: '/', icon: 'lucide:home', label: 'Startseite' },
-        { to: '/list', icon: 'lucide:shopping-cart', label: 'Einkaufsliste' },
-        { to: '/profile', icon: 'lucide:user', label: 'Profil' },
+        { to: '/', icon: 'lucide:home', label: 'Startseite', logo: true },
+        { to: '/list', icon: 'lucide:shopping-cart', label: 'Einkaufsliste', logo: false },
+        { to: '/profile', icon: 'lucide:user', label: 'Profil', logo: false },
       ]"
       :key="item.to"
       :to="item.to"
@@ -31,7 +32,8 @@ import { Icon } from '@iconify/vue'
         class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-base-content"
         @click="navigate"
       >
-        <Icon :icon="item.icon" width="24" height="24" />
+        <img v-if="item.logo" :src="logo" alt="KorbKumpel" class="w-6 h-6 object-contain" />
+        <Icon v-else :icon="item.icon" width="24" height="24" />
         <span class="dock-label text-xs sm:inline hidden">{{ item.label }}</span>
       </button>
     </RouterLink>
