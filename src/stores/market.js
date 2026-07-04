@@ -1,19 +1,25 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import { SUPPORTED_SUPERMARKETS } from '@/utils/supermarkets'
 
 /**
  * Pinia store that tracks the currently selected supermarkets.
  *
- * The selection is intentionally NOT persisted to localStorage because the
- * specification states it can be reset after a page reload. The user must
- * re-confirm the supermarket pre-selection for every new session.
+ * The selection is persisted to localStorage via VueUse's `useLocalStorage`
+ * so that the user's preferred supermarkets survive page reloads. When the
+ * stored selection is empty, the UI automatically prompts the user to pick
+ * at least one supermarket.
  *
  * @returns {object} Store state and actions.
  */
 export const useMarketStore = defineStore('market', () => {
-  /** @type {import('vue').Ref<string[]>} Selected supermarket ids. */
-  const selectedMarkets = ref([])
+  /**
+   * Selected supermarket ids, persisted in localStorage under the key
+   * `korbkumpel.selectedMarkets`.
+   * @type {import('vue').Ref<string[]>}
+   */
+  const selectedMarkets = useLocalStorage('korbkumpel.selectedMarkets', [])
 
   /**
    * Comma separated list of selected supermarket ids, ready to be injected

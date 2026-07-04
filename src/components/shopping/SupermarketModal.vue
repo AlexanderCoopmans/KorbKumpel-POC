@@ -8,12 +8,10 @@ import { SUPPORTED_SUPERMARKETS } from '@/utils/supermarkets'
  * Supermarket pre-selection modal.
  *
  * Opens a DaisyUI dialog that lets the user multi-select which supermarkets
- * to include in the current session. The selection is stored in the
- * `useMarketStore` Pinia store and injected into all subsequent Typesense
- * search queries.
+ * to include in the current session. Changes are applied to the
+ * `useMarketStore` Pinia store immediately (no apply/cancel buttons) and the
+ * selection is persisted to localStorage via `useLocalStorage`.
  */
-
-/** Whether the modal is currently open. */
 const props = defineProps({
   open: { type: Boolean, default: false },
 })
@@ -24,16 +22,13 @@ const marketStore = useMarketStore()
 /** Reference to the underlying <dialog> element. */
 const dialogRef = ref(null)
 
-/** Local working copy so the user can cancel without applying changes. */
-const localSelection = ref([])
-
-// Sync the local copy whenever the modal is opened and control the native
-// dialog element via the HTML Dialog API.
+// Control the native dialog element via the HTML Dialog API. The selection
+// is read directly from the persisted store, so there is no local working
+// copy — every toggle is applied immediately.
 watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
-      localSelection.value = [...marketStore.selectedMarkets]
       await nextTick()
       if (dialogRef.value && !dialogRef.value.open) {
         dialogRef.value.showModal()
@@ -45,29 +40,21 @@ watch(
 )
 
 /**
- * Toggle a supermarket in the local selection.
+ * Toggle a supermarket in the persisted store selection immediately.
  * @param {string} id - Supermarket id.
  */
 function toggle(id) {
-  const idx = localSelection.value.indexOf(id)
-  if (idx === -1) localSelection.value.push(id)
-  else localSelection.value.splice(idx, 1)
+  marketStore.toggleMarket(id)
 }
 
-/** Apply the local selection to the store and close the modal. */
-function apply() {
-  marketStore.setMarkets(localSelection.value)
-  emit('close')
-}
-
-/** Discard the local selection and close the modal. */
-function cancel() {
+/** Close the modal (triggered by backdrop click or close button). */
+function close() {
   emit('close')
 }
 </script>
 
 <template>
-  <dialog ref="dialogRef" class="modal modal-middle" @close="cancel">
+  <dialog ref="dialogRef" class="modal modal-middle" @close="close">
     <div class="modal-box space-y-4">
       <div class="flex items-start justify-between">
         <div class="space-y-1">
@@ -76,7 +63,7 @@ function cancel() {
             Wähle die Supermärkte, die du für deine Einkaufsliste berücksichtigen möchtest.
           </p>
         </div>
-        <button class="btn btn-ghost btn-sm btn-circle" aria-label="Schließen" @click="cancel">
+        <button class="btn btn-ghost btn-sm btn-circle" aria-label="Schließen" @click="close">
           <Icon icon="lucide:x" width="18" height="18" />
         </button>
       </div>
@@ -90,21 +77,16 @@ function cancel() {
           <input
             type="checkbox"
             class="checkbox checkbox-primary"
-            :checked="localSelection.includes(market.id)"
+            :checked="marketStore.selectedMarkets.includes(market.id)"
             @change="toggle(market.id)"
           />
           <span class="font-medium">{{ market.label }}</span>
         </label>
       </div>
-
-      <div class="modal-action">
-        <button class="btn btn-ghost" @click="cancel">Abbrechen</button>
-        <button class="btn btn-primary" @click="apply">Übernehmen</button>
-      </div>
     </div>
 
     <form method="dialog" class="modal-backdrop">
-      <button @click="cancel">close</button>
+      <button @click="close">close</button>
     </form>
   </dialog>
 </template>

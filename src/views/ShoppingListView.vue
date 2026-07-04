@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useMarketStore } from '@/stores/market'
 import ProductSearch from '@/components/shopping/ProductSearch.vue'
@@ -14,6 +14,10 @@ import OptimizeButton from '@/components/shopping/OptimizeButton.vue'
  * The primary interactive workspace of the application. Contains the
  * supermarket pre-selection trigger, the smart search input, the grouped list
  * of items and the persistent optimization button.
+ *
+ * When the view is opened and no supermarkets have been selected yet (also
+ * true on first visit after a page reload with an empty localStorage), the
+ * supermarket pre-selection modal opens automatically.
  */
 const marketStore = useMarketStore()
 
@@ -22,6 +26,15 @@ const modalOpen = ref(false)
 
 /** Number of selected supermarkets for the badge. */
 const selectedCount = computed(() => marketStore.selectedMarkets.length)
+
+// Auto-open the supermarket modal on first mount if the user has not yet
+// selected any supermarkets. The selection is persisted via useLocalStorage,
+// so returning users with a saved selection will not see the prompt.
+onMounted(() => {
+  if (!marketStore.hasSelection) {
+    modalOpen.value = true
+  }
+})
 </script>
 
 <template>
