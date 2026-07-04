@@ -19,6 +19,8 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@iconify/vue": "^5.0.1",
+    "@unocss/reset": "^66.7.4",
     "@unocss/transformer-directives": "^66.7.4",
     "@vitejs/plugin-vue": "^6.0.7",
     "prettier": "3.8.4",
