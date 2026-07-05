@@ -20,6 +20,7 @@ import { supermarketLabel } from '@/utils/supermarkets'
  * @property {number} totalDistance - Total driving distance in meters.
  * @property {number[][]} coords - Ordered [lat, lon] pairs for polyline drawing.
  * @property {string[]} supermarketIds - Unique supermarket ids on this route.
+ * @property {number[]} matrixIndices - Matrix indices (1-based) in visit order.
  */
 
 /** Overpass API endpoint used to fetch supermarket nodes. */
@@ -90,7 +91,7 @@ export function useSupermarketDiscovery() {
           locating.value = false
           resolve(null)
         },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
       )
     })
   }
@@ -158,12 +159,47 @@ export function useSupermarketDiscovery() {
   }
 
   /**
+   * Prune supermarkets that are farther from the origin than at least one
+   * other store of the same chain. This keeps only the closest store(s)
+   * per chain, reducing the coordinate count sent to OSRM so the request
+   * stays within the demo server's limits.
+   *
+   * Uses Euclidean distance as a fast approximation — the actual driving
+   * distance is resolved later by the OSRM Table Service.
+   *
+   * @param {DiscoveredSupermarket[]} stores - All discovered supermarkets.
+   * @param {{lat: number, lng: number}} user - Origin coordinate.
+   * @returns {DiscoveredSupermarket[]} Pruned list (closest per chain).
+   */
+  function pruneOuterStores(stores, user) {
+    /** @type {Map<string, DiscoveredSupermarket>} */
+    const bestPerChain = new Map()
+    /** @type {Map<string, number>} Euclidean distance squared per chain. */
+    const bestDist = new Map()
+    for (const store of stores) {
+      const dx = store.lon - user.lng
+      const dy = store.lat - user.lat
+      const dist = dx * dx + dy * dy
+      const existing = bestDist.get(store.supermarketId)
+      if (existing == null || dist < existing) {
+        bestPerChain.set(store.supermarketId, store)
+        bestDist.set(store.supermarketId, dist)
+      }
+    }
+    return [...bestPerChain.values()]
+  }
+
+  /**
    * Query the OSRM Table Service for a driving distance matrix between the
    * origin and all supermarkets. Index 0 is always the user's location.
    *
+   * When the server responds with HTTP 400 (too many coordinates or other
+   * validation error), `null` is returned instead of throwing so the caller
+   * can fall back to displaying the discovered supermarkets without routes.
+   *
    * @param {{lat: number, lng: number}} user - Origin coordinate.
    * @param {DiscoveredSupermarket[]} stores - Supermarkets to include.
-   * @returns {Promise<number[][]>} Distance matrix in meters.
+   * @returns {Promise<number[][]|null>} Distance matrix in meters, or null.
    */
   async function fetchDistanceMatrix(user, stores) {
     const coordsStr = [`${user.lng},${user.lat}`, ...stores.map((s) => `${s.lon},${s.lat}`)].join(
@@ -172,26 +208,40 @@ export function useSupermarketDiscovery() {
     const url = `${OSRM_TABLE_URL}/${coordsStr}?annotations=distance`
 
     const response = await fetch(url)
+    if (response.status === 400) {
+      // Too many coordinates or URL too long — signal the caller to fall
+      // back to badge-only mode.
+      return null
+    }
     if (!response.ok) {
       throw new Error(`OSRM Fehler: ${response.status}`)
     }
     const json = await response.json()
     if (json.code !== 'Ok' || !Array.isArray(json.distances)) {
-      throw new Error('OSRM konnte keine Routen berechnen')
+      return null
     }
     return json.distances
   }
 
   /**
-   * Run a Nearest-Neighbor heuristic over the distance matrix to build
-   * candidate routes. The origin (index 0) is always the start and end of
-   * every route. Routes whose total driving distance exceeds `maxDistance`
-   * are discarded.
+   * Run an exhaustive search over the distance matrix to build candidate
+   * routes. The origin (index 0) is always the start and end of every
+   * route. Routes whose total driving distance exceeds `maxDistance` are
+   * discarded.
    *
-   * Each route is deduplicated by its set of supermarket ids (regardless of
-   * which physical store was visited) so the user is offered every unique
-   * combination of 1, 2 or 3 supermarkets exactly once — the shortest
-   * variant of each combination wins.
+   * Strategy:
+   *  1. Filter out stores that are unreachable (null distance from origin).
+   *  2. For each supermarket chain, keep only the store closest to the
+   *     origin (by driving distance) to reduce the search space.
+   *  3. Enumerate all combinations of size 1, 2, 3 and 4 from the remaining
+   *     representative stores.
+   *  4. For each combination, try every permutation and keep the shortest
+   *     round-trip (origin -> perm -> origin).
+   *  5. Deduplicate by supermarket chain combination — only the shortest
+   *     variant per combination id is returned.
+   *
+   *  No max-distance filter is applied so the user can see the total driving
+   *  distance for every combination, including all 4 chains.
    *
    * @param {number[][]} matrix - Distance matrix (index 0 = origin).
    * @param {DiscoveredSupermarket[]} stores - Supermarkets (index i in matrix
@@ -200,84 +250,153 @@ export function useSupermarketDiscovery() {
    * @returns {RouteOption[]} Valid route options sorted by total distance.
    */
   function buildRoutes(matrix, stores, userOrigin) {
-    const n = stores.length
-    if (n === 0) return []
+    if (stores.length === 0) return []
+
+    // 1. Filter out stores that are unreachable from the origin (OSRM
+    //    returns null when no road route exists).
+    /** @type {{store: DiscoveredSupermarket, index: number}[]} */
+    const reachable = []
+    for (let i = 0; i < stores.length; i++) {
+      const matrixIdx = i + 1
+      const d = matrix[0]?.[matrixIdx]
+      if (d != null && d >= 0) {
+        reachable.push({ store: stores[i], index: matrixIdx })
+      }
+    }
+    if (reachable.length === 0) return []
+
+    // 2. For each supermarket chain, keep only the store closest to the
+    //    origin by driving distance.
+    /** @type {Map<string, {store: DiscoveredSupermarket, index: number}>} */
+    const bestPerChain = new Map()
+    for (const entry of reachable) {
+      const dist = matrix[0][entry.index]
+      const existing = bestPerChain.get(entry.store.supermarketId)
+      if (!existing || dist < matrix[0][existing.index]) {
+        bestPerChain.set(entry.store.supermarketId, entry)
+      }
+    }
+    /** @type {{store: DiscoveredSupermarket, index: number}[]} */
+    const candidates = [...bestPerChain.values()]
+    if (candidates.length === 0) return []
 
     /**
-     * Build a Nearest-Neighbor route that visits exactly `targetLen`
-     * supermarkets, starting from the given seed index. Returns the ordered
-     * store indices (1-based) and the total driving distance including the
-     * return trip.
-     *
-     * @param {number} seedIndex - 1-based index into the matrix.
-     * @param {number} targetLen - Number of supermarkets to visit.
-     * @returns {{order: number[], total: number}|null}
+     * Generate all k-element combinations from the candidates array.
+     * @param {number} k - Combination size.
+     * @returns {number[][]} Arrays of indices into `candidates`.
      */
-    function nearestNeighborFrom(seedIndex, targetLen) {
-      const visited = new Set([0, seedIndex])
-      const order = [seedIndex]
-      let total = matrix[0][seedIndex]
-      let current = seedIndex
-
-      while (order.length < targetLen) {
-        let next = -1
-        let best = Infinity
-        for (let i = 1; i <= n; i++) {
-          if (visited.has(i)) continue
-          const d = matrix[current][i]
-          if (d != null && d < best) {
-            best = d
-            next = i
-          }
-        }
-        if (next === -1) break
-        order.push(next)
-        visited.add(next)
-        total += best
-        current = next
+    function combinations(k) {
+      const result = []
+      const n = candidates.length
+      if (k > n) return result
+      const indices = Array.from({ length: k }, (_, i) => i)
+      while (true) {
+        result.push([...indices])
+        let i = k - 1
+        while (i >= 0 && indices[i] === n - k + i) i--
+        if (i < 0) break
+        indices[i]++
+        for (let j = i + 1; j < k; j++) indices[j] = indices[j - 1] + 1
       }
-      // Return trip back to origin.
-      total += matrix[current][0]
-      return { order, total }
+      return result
     }
 
     /**
-     * Build the route option object from an ordered list of store indices.
-     * @param {number[]} order - 1-based store indices.
+     * Generate all permutations of an array (Heap's algorithm).
+     * @param {number[]} arr - Array of indices.
+     * @returns {number[][]} All permutations.
+     */
+    function permutations(arr) {
+      const result = []
+      const a = [...arr]
+      const n = a.length
+      const c = new Array(n).fill(0)
+      result.push([...a])
+      let i = 0
+      while (i < n) {
+        if (c[i] < i) {
+          if (i % 2 === 0) {
+            ;[a[0], a[i]] = [a[i], a[0]]
+          } else {
+            ;[a[c[i]], a[i]] = [a[i], a[c[i]]]
+          }
+          result.push([...a])
+          c[i]++
+          i = 0
+        } else {
+          c[i] = 0
+          i++
+        }
+      }
+      return result
+    }
+
+    /**
+     * Compute the total round-trip distance for a given ordering of matrix
+     * indices: origin -> stores[perm] -> origin.
+     * @param {number[]} perm - Matrix indices (1-based) in visit order.
+     * @returns {number|null} Total distance in meters, or null if any
+     *   segment is unreachable.
+     */
+    function roundTripDistance(perm) {
+      let total = 0
+      let current = 0 // origin
+      for (const idx of perm) {
+        const d = matrix[current][idx]
+        if (d == null) return null
+        total += d
+        current = idx
+      }
+      const back = matrix[current][0]
+      if (back == null) return null
+      total += back
+      return total
+    }
+
+    /**
+     * Build the route option object from a permutation of candidate indices.
+     * @param {number[]} candidatePerm - Indices into `candidates`.
      * @param {number} total - Total driving distance in meters.
      * @returns {RouteOption}
      */
-    function toRouteOption(order, total) {
-      const stops = order.map((i) => stores[i - 1])
+    function toRouteOption(candidatePerm, total) {
+      const stops = candidatePerm.map((ci) => candidates[ci].store)
+      const matrixIndices = candidatePerm.map((ci) => candidates[ci].index)
       const coords = [
         [userOrigin.lat, userOrigin.lng],
-        ...order.map((i) => [stores[i - 1].lat, stores[i - 1].lon]),
+        ...stops.map((s) => [s.lat, s.lon]),
         [userOrigin.lat, userOrigin.lng],
       ]
-      // Deduplicate supermarket ids so the same chain visited twice still
-      // produces a stable combination key.
-      const supermarketIds = [...new Set(stops.map((s) => s.supermarketId))]
+      const supermarketIds = [...new Set(stops.map((s) => s.supermarketId))].sort()
       return {
         id: supermarketIds.join('+'),
         stops,
         totalDistance: total,
         coords,
         supermarketIds,
+        matrixIndices,
       }
     }
 
     /** @type {Map<string, RouteOption>} Best route per supermarket combination. */
     const bestByCombination = new Map()
 
-    // Explore combinations of size 1, 2 and 3. For each size we seed a
-    // Nearest-Neighbor run from every supermarket so we cover all unique
-    // combinations. The shortest variant per combination id wins.
-    for (let targetLen = 1; targetLen <= 3; targetLen++) {
-      if (targetLen > n) break
-      for (let seed = 1; seed <= n; seed++) {
-        const result = nearestNeighborFrom(seed, targetLen)
-        if (!result || result.total > maxDistance.value) continue
-        const option = toRouteOption(result.order, result.total)
+    // 3 & 4. Enumerate combinations of size 1-4, try all permutations per
+    //    combination, keep the shortest valid round-trip.
+    for (let size = 1; size <= 4; size++) {
+      if (size > candidates.length) break
+      for (const combo of combinations(size)) {
+        let best = null
+        for (const perm of permutations(combo)) {
+          const matrixPerm = perm.map((ci) => candidates[ci].index)
+          const dist = roundTripDistance(matrixPerm)
+          if (dist == null) continue
+          if (!best || dist < best.dist) {
+            best = { perm, dist }
+          }
+        }
+        if (!best) continue
+        const option = toRouteOption(best.perm, best.dist)
         const existing = bestByCombination.get(option.id)
         if (!existing || option.totalDistance < existing.totalDistance) {
           bestByCombination.set(option.id, option)
@@ -286,6 +405,20 @@ export function useSupermarketDiscovery() {
     }
 
     return [...bestByCombination.values()].sort((a, b) => a.totalDistance - b.totalDistance)
+  }
+
+  /**
+   * Look up the best (shortest) route for a given set of supermarket ids.
+   * Returns `null` when no matching route was found (e.g. the combination
+   * exceeds the maximum driving distance or a store is unreachable).
+   *
+   * @param {string[]} ids - Supermarket ids (order irrelevant).
+   * @returns {RouteOption|null}
+   */
+  function getRouteForCombination(ids) {
+    if (!ids || ids.length === 0) return null
+    const key = [...ids].sort().join('+')
+    return routes.value.find((r) => r.id === key) ?? null
   }
 
   /**
@@ -317,10 +450,34 @@ export function useSupermarketDiscovery() {
         error.value = 'Keine Supermärkte im Umkreis gefunden'
         return
       }
-      supermarkets.value = stores
 
-      const matrix = await fetchDistanceMatrix(userOrigin, stores)
-      routes.value = buildRoutes(matrix, stores, userOrigin)
+      // Prune outer stores: keep only the closest store per chain so the
+      // OSRM request stays within the demo server's coordinate limit.
+      const pruned = pruneOuterStores(stores, userOrigin)
+      supermarkets.value = pruned
+
+      const matrix = await fetchDistanceMatrix(userOrigin, pruned)
+
+      if (matrix == null) {
+        // OSRM rejected the request (e.g. too many coordinates even after
+        // pruning, or a 400 error). Fall back to showing the discovered
+        // supermarkets as selectable badges without route calculations.
+        routes.value = []
+        return
+      }
+
+      routes.value = buildRoutes(matrix, pruned, userOrigin)
+
+      // Only keep supermarkets that are actually reachable via the road
+      // network (OSRM returns null for unreachable coordinates) and that
+      // appear in at least one route. This keeps the map clean.
+      const reachableIds = new Set()
+      for (const route of routes.value) {
+        for (const stop of route.stops) {
+          reachableIds.add(stop.osmId)
+        }
+      }
+      supermarkets.value = pruned.filter((s) => reachableIds.has(s.osmId))
     } catch (err) {
       error.value = err?.message ?? 'Suche fehlgeschlagen'
     } finally {
@@ -346,5 +503,6 @@ export function useSupermarketDiscovery() {
     error,
     // Action
     discover,
+    getRouteForCombination,
   }
 }

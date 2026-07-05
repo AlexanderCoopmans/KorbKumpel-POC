@@ -5,7 +5,6 @@ import { useMarketStore } from '@/stores/market'
 import { useSupermarketDiscovery } from '@/composables/useSupermarketDiscovery'
 import { SUPPORTED_SUPERMARKETS } from '@/utils/supermarkets'
 import SupermarketMap from '@/components/shopping/SupermarketMap.vue'
-import RouteOption from '@/components/shopping/RouteOption.vue'
 import SupermarketBadges from '@/components/shopping/SupermarketBadges.vue'
 /**
  * Supermarket pre-selection modal with location-based route discovery.
@@ -36,6 +35,7 @@ const {
   isLoading,
   error,
   discover,
+  getRouteForCombination,
 } = useSupermarketDiscovery()
 
 /** Reference to the underlying <dialog> element. */
@@ -51,6 +51,20 @@ const badgeSelection = ref([])
 
 /** @type {import('vue').ComputedRef<boolean>} Whether geolocation is available. */
 const geoAvailable = computed(() => geoSupported.value && !!origin.value)
+
+/**
+ * Whether the user denied or failed geolocation. In this case the modal
+ * falls back to a badge-only selection with all supported supermarkets.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const locationDenied = computed(() => !!geoError.value && !origin.value)
+
+/**
+ * Whether the location-based discovery UI (map, routes, distance input)
+ * should be shown. Only when geolocation is available and not denied.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const showLocationUi = computed(() => geoSupported.value && !locationDenied.value)
 
 /**
  * Two-way computed that exposes the maximum driving distance in kilometers
@@ -78,6 +92,42 @@ const availableSupermarketIds = computed(() => {
 })
 
 /**
+ * Total distance of the currently selected badge combination, or 0 when no
+ * badges are selected. Used as the baseline for computing marginal costs.
+ * @type {import('vue').ComputedRef<number>}
+ */
+const currentSelectionDistance = computed(() => {
+  if (badgeSelection.value.length === 0) return 0
+  return getRouteForCombination(badgeSelection.value)?.totalDistance ?? 0
+})
+
+/**
+ * Map of supermarket id -> additional distance (in meters) incurred by
+ * adding that supermarket to the current badge selection. When the
+ * supermarket is already selected, the value is 0. When no valid route
+ * exists for the resulting combination, the value is `null`.
+ * @type {import('vue').ComputedRef<Record<string, number|null>>}
+ */
+const marginalCosts = computed(() => {
+  /** @type {Record<string, number|null>} */
+  const costs = {}
+  for (const id of availableSupermarketIds.value) {
+    if (badgeSelection.value.includes(id)) {
+      costs[id] = 0
+      continue
+    }
+    const extended = [...badgeSelection.value, id]
+    const route = getRouteForCombination(extended)
+    if (!route) {
+      costs[id] = null
+    } else {
+      costs[id] = Math.max(0, route.totalDistance - currentSelectionDistance.value)
+    }
+  }
+  return costs
+})
+
+/**
  * Route ids whose supermarket combination exactly matches the current badge
  * selection. Used to highlight matching route cards.
  * @type {import('vue').ComputedRef<string[]>}
@@ -96,6 +146,18 @@ const matchedRouteIds = computed(() => {
 const matchedRoute = computed(() => {
   if (matchedRouteIds.value.length === 0) return null
   return routes.value.find((r) => r.id === matchedRouteIds.value[0]) ?? null
+})
+
+/**
+ * Human readable label for the total driving distance of the current badge
+ * selection. Empty when no badges are selected.
+ * @type {import('vue').ComputedRef<string>}
+ */
+const totalDistanceLabel = computed(() => {
+  const m = currentSelectionDistance.value
+  if (m === 0) return ''
+  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
+  return `${Math.round(m)} m`
 })
 
 // Keep the highlighted route in sync with the badge selection so the map
@@ -130,7 +192,8 @@ async function runDiscovery() {
 }
 
 /**
- * Toggle a supermarket id in the working badge selection.
+ * Toggle a supermarket id in the working badge selection and immediately
+ * persist the new selection to the market store.
  * @param {string} id - Supermarket id.
  */
 function toggleBadge(id) {
@@ -140,27 +203,7 @@ function toggleBadge(id) {
   } else {
     badgeSelection.value = badgeSelection.value.filter((x) => x !== id)
   }
-}
-
-/**
- * Apply the current badge selection to the market store and close the modal.
- * Falls back to the matched route's supermarket ids when available.
- */
-function applyBadgeSelection() {
-  if (badgeSelection.value.length === 0) return
   marketStore.setMarkets(badgeSelection.value)
-  emit('close')
-}
-
-/**
- * Apply a selected route to the market store and close the modal. Also syncs
- * the badge selection so the UI stays consistent.
- * @param {object} route - The selected route option.
- */
-function applyRoute(route) {
-  marketStore.setMarkets(route.supermarketIds)
-  badgeSelection.value = [...route.supermarketIds]
-  emit('close')
 }
 
 /**
@@ -193,9 +236,9 @@ function close() {
       </div>
 
       <!-- Geolocation status -->
-      <div v-if="geoError" class="alert alert-warning text-sm py-2">
+      <div v-if="locationDenied" class="alert alert-warning text-sm py-2">
         <Icon icon="lucide:map-pin-off" width="16" />
-        Standort nicht verfügbar: {{ geoError }}
+        Standort nicht verfügbar – wähle Supermärkte manuell.
       </div>
       <div v-else-if="locating" class="alert alert-info text-sm py-2">
         <Icon icon="lucide:loader-circle" width="16" class="animate-spin" />
@@ -203,7 +246,7 @@ function close() {
       </div>
 
       <!-- Max driving distance input (location mode only) -->
-      <label v-if="geoSupported" class="form-control">
+      <label v-if="showLocationUi" class="form-control">
         <span class="label-text text-xs mb-1">Max. Fahrstrecke (km)</span>
         <input
           v-model.number="maxDistanceKm"
@@ -218,9 +261,9 @@ function close() {
 
       <!-- Discover button (location mode only) -->
       <button
-        v-if="geoSupported"
+        v-if="showLocationUi"
         class="btn btn-primary btn-sm w-full gap-2"
-        :disabled="!geoSupported || isLoading"
+        :disabled="isLoading"
         @click="runDiscovery"
       >
         <Icon icon="lucide:search" width="16" />
@@ -239,53 +282,34 @@ function close() {
 
       <!-- Map (location mode only) -->
       <SupermarketMap
-        v-if="geoSupported"
+        v-if="showLocationUi"
         :origin="origin"
         :supermarkets="supermarkets"
         :selected-route="selectedRoute"
       />
 
       <!-- Supermarket badges (combination selection) -->
-      <div v-if="availableSupermarketIds.length > 0 || !geoSupported" class="space-y-2">
+      <div v-if="locationDenied || availableSupermarketIds.length > 0" class="space-y-2">
         <h4 class="text-sm font-semibold">Supermarkt-Kombination wählen</h4>
         <SupermarketBadges
           :available="
-            geoSupported ? availableSupermarketIds : SUPPORTED_SUPERMARKETS.map((m) => m.id)
+            locationDenied ? SUPPORTED_SUPERMARKETS.map((m) => m.id) : availableSupermarketIds
           "
-          :selected="geoSupported ? badgeSelection : marketStore.selectedMarkets"
-          :matched-route-ids="matchedRouteIds"
-          :active-route-id="selectedRoute?.id"
-          @toggle="geoSupported ? toggleBadge($event) : toggleMarket($event)"
+          :selected="locationDenied ? marketStore.selectedMarkets : badgeSelection"
+          :marginal-costs="marginalCosts"
+          :show-costs="!locationDenied"
+          @toggle="locationDenied ? toggleMarket($event) : toggleBadge($event)"
         />
-        <button
-          v-if="geoSupported"
-          class="btn btn-primary btn-sm w-full"
-          :disabled="badgeSelection.length === 0"
-          @click="applyBadgeSelection"
+        <!-- Total driving distance for the current selection -->
+        <div
+          v-if="!locationDenied && badgeSelection.length > 0"
+          class="flex items-center gap-2 text-sm text-base-content/70"
         >
-          Auswahl übernehmen
-        </button>
-      </div>
-
-      <!-- Route options (location mode only) -->
-      <div v-if="geoSupported && routes.length > 0" class="space-y-2">
-        <h4 class="text-sm font-semibold">Gefundene Routen</h4>
-        <div v-auto-animate class="space-y-2">
-          <RouteOption
-            v-for="route in routes"
-            :key="route.id"
-            :route="route"
-            :selected="selectedRoute?.id === route.id"
-            @select="applyRoute"
-            @hover="selectedRoute = $event"
-          />
+          <Icon icon="lucide:route" width="16" />
+          <span
+            >Gesamtfahrstrecke: <strong>{{ totalDistanceLabel }}</strong></span
+          >
         </div>
-      </div>
-      <div
-        v-else-if="geoSupported && !isLoading && !error && supermarkets.length > 0"
-        class="text-sm text-base-content/60"
-      >
-        Keine Routen innerhalb der maximalen Fahrstrecke gefunden.
       </div>
     </div>
 
