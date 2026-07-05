@@ -47,8 +47,8 @@ function groupLabel(key) {
         <span>{{ groupLabel(group.supermarket) }}</span>
         <span class="badge badge-ghost badge-sm">{{ group.items.length }}</span>
       </div>
-      <div class="collapse-content">
-        <ul v-auto-animate class="list bg-transparent px-0 gap-2">
+      <div class="collapse-content overflow-hidden">
+        <ul v-auto-animate class="list bg-transparent px-0 gap-2 min-w-0">
           <ShoppingListItem v-for="item in group.items" :key="item.uid" :item="item" />
         </ul>
       </div>

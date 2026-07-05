@@ -38,7 +38,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="container mx-auto px-4 py-6 max-w-2xl flex flex-col gap-6">
+  <section class="container mx-auto px-4 py-6 max-w-2xl flex flex-col gap-6 min-w-0">
     <header class="flex items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Einkaufsliste</h1>
       <button class="btn btn-sm btn-outline gap-2" @click="modalOpen = true">

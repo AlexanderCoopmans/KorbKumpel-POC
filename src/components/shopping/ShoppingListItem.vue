@@ -37,8 +37,10 @@ function swap() {
 </script>
 
 <template>
-  <li class="rounded-box bg-base-100 hover:bg-base-200/50 transition-colors p-3">
-    <div class="flex items-center gap-3">
+  <li
+    class="rounded-box bg-base-100 hover:bg-base-200/50 transition-colors p-3 overflow-hidden min-w-0 w-full"
+  >
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <!-- Checkbox to mark item as bought -->
       <input
         type="checkbox"
@@ -49,7 +51,9 @@ function swap() {
 
       <!-- Product image / placeholder -->
       <div class="avatar avatar-placeholder shrink-0">
-        <div class="w-11 h-11 rounded-lg bg-base-200 grid place-items-center overflow-hidden">
+        <div
+          class="w-9 h-9 sm:w-11 sm:h-11 rounded-lg bg-base-200 grid place-items-center overflow-hidden"
+        >
           <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.name" loading="lazy" />
           <Icon
             v-else
@@ -62,7 +66,7 @@ function swap() {
       </div>
 
       <!-- Name + meta -->
-      <div class="flex-1 min-w-0">
+      <div class="flex-1 min-w-0 overflow-hidden">
         <p
           class="font-medium leading-tight truncate"
           :class="{ 'line-through text-base-content/50': item.checked }"
@@ -78,18 +82,21 @@ function swap() {
       </div>
 
       <!-- Price -->
-      <div class="text-right shrink-0">
-        <p v-if="item.retailPrice != null" class="font-semibold leading-tight">
+      <div class="text-right shrink-0 min-w-0">
+        <p v-if="item.retailPrice != null" class="font-semibold leading-tight whitespace-nowrap">
           {{ formatPrice(item.retailPrice) }}
         </p>
-        <p v-if="item.basePrice != null" class="text-xs text-base-content/60 mt-0.5">
+        <p
+          v-if="item.basePrice != null"
+          class="text-xs text-base-content/60 mt-0.5 whitespace-nowrap"
+        >
           {{ formatBasePrice(item.basePrice, item.baseUnit) }}
         </p>
       </div>
 
       <!-- Delete -->
       <button
-        class="btn btn-ghost btn-circle text-base-content/40 hover:text-error shrink-0"
+        class="btn btn-ghost btn-circle btn-sm text-base-content/40 hover:text-error shrink-0 p-1"
         aria-label="Eintrag löschen"
         @click="listStore.removeItem(item.uid)"
       >
