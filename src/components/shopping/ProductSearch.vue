@@ -65,9 +65,9 @@ function selectSuggestion(suggestion) {
     <ul
       v-if="suggestions.length > 0"
       v-auto-animate
-      class="menu bg-base-100 rounded-box border border-base-300 shadow-lg max-h-80 overflow-y-auto p-2"
+      class="bg-base-100 rounded-box border border-base-300 shadow-lg max-h-80 overflow-y-auto overflow-x-hidden p-2 flex flex-col gap-1"
     >
-      <li v-for="(suggestion, index) in suggestions" :key="index">
+      <li v-for="(suggestion, index) in suggestions" :key="index" class="list-none">
         <button
           type="button"
           class="flex items-center gap-3 w-full text-left"
