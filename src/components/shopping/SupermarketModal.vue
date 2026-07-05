@@ -64,7 +64,7 @@ function close() {
           </p>
         </div>
         <button class="btn btn-ghost btn-sm btn-circle" aria-label="Schließen" @click="close">
-          <Icon icon="lucide:x" width="18" height="18" />
+          <Icon icon="lucide:x" />
         </button>
       </div>
 

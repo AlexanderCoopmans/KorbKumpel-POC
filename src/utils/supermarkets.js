@@ -8,13 +8,29 @@
 /**
  * Default list of supported supermarkets.
  * The `id` matches the `supermarket` field value stored in Typesense.
- * @type {{id: string, label: string}[]}
+ * @type {{id: string, label: string, logo?: string}[]}
  */
 export const SUPPORTED_SUPERMARKETS = [
-  { id: 'aldi-sued', label: 'Aldi Süd' },
-  { id: 'rewe', label: 'REWE' },
-  { id: 'lidl', label: 'LIDL' },
-  { id: 'netto-marken-discount', label: 'Netto' },
+  {
+    id: 'aldi-sued',
+    label: 'Aldi Süd',
+    logo: new URL('../assets/supermarket-logos/aldi.jpg', import.meta.url).href,
+  },
+  {
+    id: 'rewe',
+    label: 'REWE',
+    logo: new URL('../assets/supermarket-logos/Rewe_Logo.png', import.meta.url).href,
+  },
+  {
+    id: 'lidl',
+    label: 'LIDL',
+    logo: new URL('../assets/supermarket-logos/Lidl-Logo.webp', import.meta.url).href,
+  },
+  {
+    id: 'netto-marken-discount',
+    label: 'Netto',
+    logo: new URL('../assets/supermarket-logos/Netto_logo.svg', import.meta.url).href,
+  },
 ]
 
 /**

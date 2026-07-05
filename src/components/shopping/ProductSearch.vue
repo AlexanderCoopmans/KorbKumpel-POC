@@ -47,7 +47,6 @@ function selectSuggestion(suggestion) {
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="z. B. Schokolade"
         class="input input-bordered w-full pr-10"
         :class="{ 'input-error': error }"
       />
