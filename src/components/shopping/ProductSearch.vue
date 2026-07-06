@@ -72,6 +72,7 @@ function selectSuggestion(suggestion) {
           type="text"
           class="input input-bordered w-full pr-10"
           :class="{ 'input-error': error }"
+          placeholder="Produkt suchen und hinzufügen..."
         />
         <span
           v-if="isLoading"
