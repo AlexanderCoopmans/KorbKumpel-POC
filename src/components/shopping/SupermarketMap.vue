@@ -2,12 +2,16 @@
 import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet-routing-machine'
+import 'leaflet-routing-machine/dist/leaflet-routing-machine.css'
 
 /**
  * Interactive Leaflet map used inside the supermarket modal.
  *
  * Renders the user's location as a marker, supermarket markers for every
- * discovered store and a polyline for the currently selected route option.
+ * discovered store and — when a route is selected — the actual driving
+ * path between origin -> supermarkets -> origin using the
+ * Leaflet Routing Machine (OSRM demo server under the hood).
  *
  * @prop {Object|null} origin - `{ lat, lng }` of the user or `null`.
  * @prop {Array} supermarkets - Discovered supermarkets (see composable).
@@ -22,12 +26,18 @@ const props = defineProps({
 
 /** @type {import('vue').Ref<HTMLElement|null>} */
 const mapEl = ref(null)
-/** @type {L.Map|null} */
+/**
+ * Leaflet map instance. Kept as a plain variable (not a `ref`) because
+ * Leaflet objects are huge and deeply nested — wrapping them in a Vue ref
+ * would make Vue try to track every property, which kills performance and
+ * can cause rendering bugs.
+ * @type {L.Map|null}
+ */
 let map = null
-/** @type {L.LayerGroup|null} */
+/** @type {L.LayerGroup|null} Layer group holding all custom markers. */
 let markerLayer = null
-/** @type {L.Polyline|null} */
-let routeLine = null
+/** @type {L.Routing.Control|null} Routing machine control for the selected route. */
+let routingControl = null
 
 /**
  * Initialize the Leaflet map instance once the container element is mounted.
@@ -51,25 +61,98 @@ async function initMap() {
  * Remove the Leaflet map instance and free its DOM listeners.
  */
 function destroyMap() {
+  removeRoutingControl()
   if (map) {
     map.remove()
     map = null
     markerLayer = null
-    routeLine = null
   }
 }
 
 /**
- * Redraw all markers and the selected route polyline based on the current
- * props. Called whenever the inputs change.
+ * Remove the current routing control from the map (if any).
+ */
+function removeRoutingControl() {
+  if (routingControl && map) {
+    map.removeControl(routingControl)
+  }
+  routingControl = null
+}
+
+/**
+ * Build the ordered list of Leaflet waypoints for the currently selected
+ * route: origin -> supermarket stops -> origin (round trip).
+ *
+ * Returns an empty array when no route is selected or the origin is missing.
+ *
+ * @returns {L.Routing.Waypoint[]}
+ */
+function buildWaypoints() {
+  if (!props.origin || !props.selectedRoute?.stops?.length) return []
+  const stops = props.selectedRoute.stops
+  /** @type {L.LatLng[]} */
+  const points = [
+    L.latLng(props.origin.lat, props.origin.lng),
+    ...stops.map((s) => L.latLng(s.lat, s.lon)),
+    L.latLng(props.origin.lat, props.origin.lng),
+  ]
+  return points.map((p, idx) => {
+    // Suppress the default routing markers — we draw our own custom
+    // markers in `redraw()` to keep the visual style consistent.
+    return new L.Routing.Waypoint(p, undefined, {
+      allowUTurn: true,
+      // The first and last waypoints are the user's location.
+      name: idx === 0 || idx === points.length - 1 ? 'Dein Standort' : undefined,
+    })
+  })
+}
+
+/**
+ * (Re)create the Leaflet Routing Machine control for the selected route.
+ * The control queries the OSRM demo server for the actual road path and
+ * draws it on the map. The itinerary panel is hidden to keep the modal
+ * compact; only the route line is shown.
+ */
+function updateRoute() {
+  if (!map) return
+  removeRoutingControl()
+
+  const waypoints = buildWaypoints()
+  if (waypoints.length === 0) return
+
+  routingControl = L.Routing.control({
+    waypoints,
+    routeWhileDragging: false,
+    show: false, // Hide the itinerary panel (we only want the line).
+    addWaypoints: false, // Disable click-to-add-waypoint interaction.
+    draggableWaypoints: false, // Lock waypoints (read-only display).
+    fitSelectedRoutes: true, // Auto-zoom to the computed route.
+    lineOptions: {
+      color: '#3b82f6',
+      weight: 5,
+      opacity: 0.85,
+      addWaypoints: false,
+    },
+    // Suppress the default waypoint markers — we render our own.
+    createMarker: () => null,
+    // Use the OSRM demo backend (same as the distance matrix in the
+    // composable). The default service also points here, but we set it
+    // explicitly for clarity.
+    router: L.Routing.osrmv1({
+      serviceUrl: 'https://router.project-osrm.org/route/v1',
+      language: 'de',
+    }),
+  })
+  routingControl.addTo(map)
+}
+
+/**
+ * Redraw all custom markers based on the current props. The driving route
+ * itself is handled separately by `updateRoute()` via the routing machine.
  */
 function redraw() {
   if (!map || !markerLayer) return
   markerLayer.clearLayers()
-  if (routeLine) {
-    routeLine.remove()
-    routeLine = null
-  }
 
   const bounds = []
 
@@ -91,19 +174,9 @@ function redraw() {
     bounds.push([store.lat, store.lon])
   }
 
-  // Selected route polyline.
-  if (props.selectedRoute?.coords?.length) {
-    routeLine = L.polyline(props.selectedRoute.coords, {
-      color: '#3b82f6',
-      weight: 4,
-      opacity: 0.8,
-    }).addTo(markerLayer)
-    for (const [lat, lon] of props.selectedRoute.coords) {
-      bounds.push([lat, lon])
-    }
-  }
-
-  if (bounds.length) {
+  // Fit the view to the markers when no route is active (the routing
+  // machine handles fitting when a route is selected).
+  if (bounds.length && !props.selectedRoute) {
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 })
   }
 }
@@ -139,8 +212,11 @@ watch(mapEl, async (el) => {
   if (el) await initMap()
 })
 
-// Redraw whenever any of the inputs change.
-watch(() => [props.origin, props.supermarkets, props.selectedRoute], redraw, { deep: true })
+// Redraw markers when origin or supermarkets change.
+watch(() => [props.origin, props.supermarkets], redraw, { deep: true })
+
+// Recompute the driving route when the selected route changes.
+watch(() => props.selectedRoute, updateRoute, { deep: true })
 
 onBeforeUnmount(destroyMap)
 </script>
