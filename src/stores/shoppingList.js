@@ -14,6 +14,9 @@ import { useLocalStorage } from '@vueuse/core'
  * @property {number} [basePrice] - Base price in cents (products only).
  * @property {string} [baseUnit] - Base unit description (products only).
  * @property {string} [supermarket] - Supermarket id (products only).
+ * @property {string} [genericCategory] - Generic product category from
+ *   Typesense (products only). Used by the optimization logic to find
+ *   cheaper alternatives across supermarkets.
  * @property {string} [gtin] - GTIN / EAN code (products only).
  * @property {boolean} checked - Whether the item is marked as bought.
  * @property {number} quantity - How many of this item should be bought (>= 1).
@@ -100,6 +103,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
       basePrice: product.basePrice ?? null,
       baseUnit: product.baseUnit ?? null,
       supermarket: product.supermarket ?? null,
+      genericCategory: product.genericCategory ?? null,
       gtin: product.gtin ?? null,
       checked: false,
       quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
@@ -164,6 +168,44 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     item.quantity = next
   }
 
+  /**
+   * Replace an existing item with a new product document. The old item is
+   * removed from its current position and the new product is appended to
+   * the end of the list (so it lands in the correct supermarket group via
+   * `groupedItems`). The quantity is carried over from the old item unless
+   * an explicit `quantity` is provided.
+   *
+   * Used by the optimization flows (see `useOptimization`) to swap an item
+   * for a cheaper alternative found in Typesense.
+   *
+   * @param {string} uid - Unique id of the item to replace.
+   * @param {object} product - A Typesense product document for the new item.
+   * @param {number} [quantity] - Optional quantity override. Defaults to
+   *   the quantity of the replaced item.
+   */
+  function replaceItem(uid, product, quantity) {
+    const idx = items.value.findIndex((i) => i.uid === uid)
+    if (idx === -1) return
+    const oldItem = items.value[idx]
+    /** @type {ShoppingListItem} */
+    const next = {
+      uid: crypto.randomUUID(),
+      type: 'product',
+      name: product.name,
+      brand: product.brand ?? null,
+      imageUrl: product.imageUrl ?? null,
+      retailPrice: product.retailPrice ?? null,
+      basePrice: product.basePrice ?? null,
+      baseUnit: product.baseUnit ?? null,
+      supermarket: product.supermarket ?? null,
+      genericCategory: product.genericCategory ?? null,
+      gtin: product.gtin ?? null,
+      checked: oldItem.checked ?? false,
+      quantity: Math.max(1, Math.floor(Number(quantity ?? oldItem.quantity ?? 1) || 1)),
+    }
+    items.value.splice(idx, 1, next)
+  }
+
   /** Remove every item from the list. */
   function clearList() {
     items.value = []
@@ -179,6 +221,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     addProduct,
     addRawItem,
     removeItem,
+    replaceItem,
     toggleChecked,
     setChecked,
     setQuantity,
