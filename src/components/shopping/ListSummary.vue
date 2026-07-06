@@ -29,16 +29,16 @@ const checked = computed(() => listStore.checkedCount)
 
 <template>
   <div class="stats stats-horizontal shadow w-full bg-base-100">
-    <div class="stat">
+    <div class="stat p-2 flex flex-col items-center">
       <div class="stat-title">Gesamt</div>
       <div class="stat-value text-primary text-lg">{{ formatPrice(total) }}</div>
     </div>
-    <div class="stat">
+    <div class="stat p-2 flex flex-col items-center">
       <div class="stat-title">Artikel</div>
       <div class="stat-value text-lg">{{ count }}</div>
       <div class="stat-desc">{{ quantity }} Stück · {{ checked }} erledigt</div>
     </div>
-    <div class="stat">
+    <div class="stat p-2 flex flex-col items-center">
       <div class="stat-title">Dauer</div>
       <div class="stat-value text-lg">{{ formatDuration(totalTime) }}</div>
       <div class="stat-desc">{{ includesDriving ? 'Fahrt + Aufenthalt' : 'nur Aufenthalt' }}</div>

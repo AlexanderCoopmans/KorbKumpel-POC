@@ -107,7 +107,7 @@ function onRejected(uid) {
     <div
       v-for="group in groups"
       :key="group.supermarket"
-      class="collapse collapse-arrow border border-base-300 rounded-box bg-base-100"
+      class="collapse collapse-arrow border border-base-300 rounded-box bg-base-100 p-0"
     >
       <input type="checkbox" checked />
       <div class="collapse-title font-semibold flex items-center justify-between">
@@ -120,8 +120,8 @@ function onRejected(uid) {
           <span class="badge badge-ghost badge-sm">{{ group.items.length }}</span>
         </span>
       </div>
-      <div class="collapse-content overflow-hidden">
-        <ul v-auto-animate class="list bg-transparent px-0 gap-2 min-w-0">
+      <div class="collapse-content overflow-hidden p-3">
+        <ul v-auto-animate class="flex flex-col bg-transparent px-0 gap-3 min-w-0">
           <ShoppingListItem
             v-for="item in group.items"
             :key="item.uid"

@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
-import { formatBasePrice } from '@/utils/format'
+import { formatBasePrice, formatPrice } from '@/utils/format'
 
 /**
  * Inline optimization badge/tag rendered inside a shopping list item.
@@ -36,6 +36,10 @@ const priceLabel = computed(() =>
   formatBasePrice(cheapest.value?.basePrice, cheapest.value?.baseUnit),
 )
 
+const priceLabelShort = computed(() =>
+  formatPrice(cheapest.value?.basePrice, cheapest.value?.baseUnit, true),
+)
+
 /** @type {import('vue').ComputedRef<number>} Savings percentage (price flow). */
 const savingsPercent = computed(() => props.result.savingsPercent ?? 0)
 
@@ -61,7 +65,8 @@ const shortUnit = computed(() => {
     @click="emit('open')"
   >
     <Icon icon="lucide:tag" width="12" height="12" />
-    <span>Ab {{ priceLabel }}</span>
+    <span class="md:hidden">Ab {{ priceLabelShort }} </span>
+    <span class="hidden md:inline">Ab {{ priceLabel }}</span>
   </button>
 
   <!-- "Price" flow: compact savings badge -->
@@ -72,6 +77,7 @@ const shortUnit = computed(() => {
     @click="emit('open')"
   >
     <Icon icon="lucide:trending-down" width="12" height="12" />
-    <span>Bis -{{ savingsPercent }}% / {{ shortUnit }}</span>
+    <span class="md:hidden">-{{ savingsPercent }}%</span>
+    <span class="hidden md:inline">Bis -{{ savingsPercent }}% / {{ shortUnit }}</span>
   </button>
 </template>

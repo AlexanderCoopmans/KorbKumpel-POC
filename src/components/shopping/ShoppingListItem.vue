@@ -50,7 +50,7 @@ function openOptimization() {
 
 <template>
   <li
-    class="rounded-box bg-base-100 hover:bg-base-200/50 transition-colors p-3 overflow-hidden min-w-0 w-full"
+    class="rounded-box bg-base-100 hover:bg-base-200/50 transition-colors overflow-hidden min-w-0 w-full p-0"
   >
     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <!-- Checkbox to mark item as bought -->
