@@ -1,4 +1,5 @@
 import { ref, computed, readonly } from 'vue'
+import { useGeolocation } from '@vueuse/core'
 import { brandRegex, brandToSupermarketId } from '@/utils/brandMapping'
 import { supermarketLabel } from '@/utils/supermarkets'
 
@@ -45,56 +46,75 @@ const OSRM_TABLE_URL = 'https://router.project-osrm.org/table/v1/driving'
  */
 export function useSupermarketDiscovery() {
   /**
+   * Reactive geolocation powered by VueUse's `useGeolocation`. It wraps the
+   * native `navigator.geolocation.watchPosition` stream and exposes the
+   * coordinates, error state and support flag as Vue refs. The watch is
+   * automatically started on mount and cleared on unmount, so there is no
+   * need to manage listeners manually.
+   *
+   * Returned refs used here:
+   *  - `coords`        : { latitude, longitude, accuracy, ... } (Infinity
+   *                      until the first fix arrives).
+   *  - `error`         : GeolocationPositionError | null.
+   *  - `isSupported`   : boolean — whether the browser supports geolocation.
+   *  - `locatedAt`     : timestamp of the last successful fix.
+   *  - `pause/resume`  : control the background watch (battery friendly).
+   *
+   * @type {ReturnType<typeof useGeolocation>}
+   */
+  const {
+    coords: geoCoords,
+    error: geoError,
+    isSupported: geoSupported,
+    locatedAt,
+    pause,
+    resume,
+  } = useGeolocation({
+    enableHighAccuracy: true,
+    timeout: 15000,
+    maximumAge: 0,
+  })
+
+  /**
    * Whether the browser supports the Geolocation API. When false, the user
    * can still fall back to manual selection mode.
    * @type {import('vue').ComputedRef<boolean>}
    */
-  const geoSupported = computed(
-    () => typeof navigator !== 'undefined' && 'geolocation' in navigator,
-  )
-
-  /** @type {import('vue').Ref<{lat: number, lng: number}|null>} User location. */
-  const coords = ref(null)
-  /** @type {import('vue').Ref<boolean>} Whether a geolocation request is pending. */
-  const locating = ref(false)
-  /** @type {import('vue').Ref<string|null>} Geolocation error message, if any. */
-  const geoError = ref(null)
+  const geoSupportedRef = computed(() => geoSupported.value)
 
   /**
-   * Request the user's current position via the Geolocation API. Resolves
-   * with the coordinates and stores them in `coords`. When the browser does
-   * not support geolocation or the user denies permission, `geoError` is set
-   * and the caller can fall back to manual selection.
-   *
-   * @returns {Promise<{lat: number, lng: number}|null>}
+   * User location derived from the VueUse geolocation watch. `null` until
+   * the first position fix arrives (coords are `Infinity` by default).
+   * @type {import('vue').ComputedRef<{lat: number, lng: number}|null>}
    */
-  function requestLocation() {
-    return new Promise((resolve) => {
-      if (!geoSupported.value) {
-        geoError.value = 'Geolocation wird nicht unterstützt'
-        resolve(null)
-        return
-      }
-      locating.value = true
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          coords.value = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          }
-          locating.value = false
-          geoError.value = null
-          resolve(coords.value)
-        },
-        (err) => {
-          geoError.value = err?.message ?? 'Standort nicht verfügbar'
-          locating.value = false
-          resolve(null)
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-      )
-    })
-  }
+  const coords = computed(() => {
+    if (
+      geoCoords.value == null ||
+      geoCoords.value.latitude === Infinity ||
+      geoCoords.value.longitude === Infinity
+    ) {
+      return null
+    }
+    return {
+      lat: geoCoords.value.latitude,
+      lng: geoCoords.value.longitude,
+    }
+  })
+
+  /**
+   * Whether a geolocation fix is pending. VueUse does not expose an
+   * explicit "loading" flag, so we derive it from the support flag and the
+   * absence of both coordinates and an error.
+   * @type {import('vue').ComputedRef<boolean>}
+   */
+  const locating = computed(() => geoSupported.value && coords.value == null && !geoError.value)
+
+  /**
+   * Origin coordinate used for routing. Mirrors `coords` but is exposed as a
+   * computed so consumers can react to location changes.
+   * @type {import('vue').ComputedRef<{lat: number, lng: number}|null>}
+   */
+  const origin = computed(() => coords.value)
 
   /** @type {import('vue').Ref<number>} Maximum acceptable total driving distance in meters. The search radius is derived from this value. */
   const maxDistance = ref(20000)
@@ -115,13 +135,6 @@ export function useSupermarketDiscovery() {
   const isLoading = ref(false)
   /** @type {import('vue').Ref<string|null>} Error message, if any. */
   const error = ref(null)
-
-  /**
-   * Origin coordinate used for routing. Mirrors `coords` but is exposed as a
-   * computed so consumers can react to location changes.
-   * @type {import('vue').ComputedRef<{lat: number, lng: number}|null>}
-   */
-  const origin = computed(() => coords.value)
 
   /**
    * Fetch supermarket nodes from the Overpass API around the user's location.
@@ -423,8 +436,9 @@ export function useSupermarketDiscovery() {
 
   /**
    * Run the full discovery pipeline: geolocation -> Overpass -> OSRM -> routes.
-   * Requests the user's location first; when it is unavailable the caller
-   * can fall back to manual selection mode.
+   * Relies on the VueUse `useGeolocation` watch for the user's position. When
+   * no fix is available yet (or the user denied permission), the caller can
+   * fall back to manual selection mode.
    * @returns {Promise<void>}
    */
   async function discover() {
@@ -436,12 +450,11 @@ export function useSupermarketDiscovery() {
     try {
       let userOrigin = origin.value
       if (!userOrigin) {
-        userOrigin = await requestLocation()
-      }
-      if (!userOrigin) {
-        // Geolocation unavailable — surface the geo error and abort. The UI
-        // offers a manual fallback selection in this case.
-        error.value = geoError.value ?? 'Standort konnte nicht ermittelt werden'
+        // Give the VueUse geolocation watch a chance to deliver a fix. The
+        // watch is started automatically on mount; if it has not produced
+        // coordinates yet (or the user denied permission), we surface the
+        // geolocation error and abort so the UI can offer a manual fallback.
+        error.value = geoError.value?.message ?? 'Standort konnte nicht ermittelt werden'
         return
       }
 
@@ -486,12 +499,14 @@ export function useSupermarketDiscovery() {
   }
 
   return {
-    // Geolocation
+    // Geolocation (powered by VueUse `useGeolocation`)
     coords,
-    geoSupported,
+    geoSupported: geoSupportedRef,
     locating,
     geoError: readonly(geoError),
-    requestLocation,
+    locatedAt,
+    pause,
+    resume,
     origin,
     // Inputs
     radius,
