@@ -77,7 +77,7 @@ function toggle(id) {
       v-for="badge in badges"
       :key="badge.id"
       type="button"
-      class="badge badge-lg gap-1 cursor-pointer transition-colors"
+      class="btn btn-sm gap-1 cursor-pointer transition-colors"
       :class="badge.active ? 'badge-primary' : 'badge-outline'"
       @click="toggle(badge.id)"
     >

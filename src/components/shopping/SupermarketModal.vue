@@ -286,7 +286,7 @@ function close() {
 
 <template>
   <dialog ref="dialogRef" class="modal modal-middle" @close="close">
-    <div class="modal-box space-y-4 max-w-lg">
+    <div class="modal-box space-y-4 max-w-lg flex flex-col items-end">
       <div class="flex items-start justify-between">
         <div class="space-y-1">
           <h3 class="text-lg font-bold">Supermärkte in der Nähe</h3>
@@ -334,30 +334,40 @@ function close() {
         Standort wird ermittelt…
       </div>
 
+      <!-- Map (location mode only) -->
+      <SupermarketMap
+        v-if="showLocationUi && origin && supermarkets?.length > 0"
+        :origin="origin"
+        :supermarkets="supermarkets"
+        :selected-route="selectedRoute"
+      />
+
       <!-- Max driving distance input (location mode only) -->
-      <label v-if="showLocationUi" class="form-control">
+      <label v-if="showLocationUi && !locationDenied" class="form-control w-full">
         <span class="label-text text-xs mb-1">Max. Fahrstrecke (km)</span>
-        <input
-          v-model.number="maxDistanceKm"
-          type="number"
-          min="1"
-          max="100"
-          step="1"
-          class="input input-bordered input-sm w-full"
-          :disabled="isLoading"
-        />
+        <div class="join">
+          <input
+            v-model.number="maxDistanceKm"
+            type="number"
+            min="1"
+            max="100"
+            step="1"
+            class="input input-bordered input-sm w-full join-item"
+            :disabled="isLoading"
+          />
+          <button
+            v-if="showLocationUi"
+            class="btn btn-secondary btn-sm gap-2 join-item"
+            :disabled="isLoading"
+            @click="runDiscovery"
+          >
+            <Icon icon="lucide:search" width="16" />
+            Supermärkte suchen
+          </button>
+        </div>
       </label>
 
       <!-- Discover button (location mode only) -->
-      <button
-        v-if="showLocationUi"
-        class="btn btn-primary btn-sm w-full gap-2"
-        :disabled="isLoading"
-        @click="runDiscovery"
-      >
-        <Icon icon="lucide:search" width="16" />
-        Supermärkte suchen
-      </button>
 
       <!-- Loading / error states -->
       <div v-if="isLoading" class="alert alert-info text-sm py-2">
@@ -369,13 +379,7 @@ function close() {
         {{ error }}
       </div>
 
-      <!-- Map (location mode only) -->
-      <SupermarketMap
-        v-if="showLocationUi"
-        :origin="origin"
-        :supermarkets="supermarkets"
-        :selected-route="selectedRoute"
-      />
+      <button class="btn btn-primary" @click="close">Schließen</button>
     </div>
 
     <form method="dialog" class="modal-backdrop">
