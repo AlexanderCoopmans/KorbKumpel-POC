@@ -17,36 +17,13 @@ import { useLocalStorage } from '@vueuse/core'
  * @property {string} [gtin] - GTIN / EAN code (products only).
  * @property {boolean} checked - Whether the item is marked as bought.
  * @property {number} quantity - How many of this item should be bought (>= 1).
- * @property {object|null} optimization - Result of the optimization engine.
- *   `null` when no optimization has been run yet.
- */
-
-/**
- * @typedef {Object} OptimizationAlternative
- * @property {string} name - Name of the alternative product.
- * @property {string} [brand] - Brand of the alternative.
- * @property {string} [imageUrl] - Image URL of the alternative.
- * @property {number} retailPrice - Retail price in cents.
- * @property {number} basePrice - Base price in cents.
- * @property {string} baseUnit - Base unit description.
- * @property {string} supermarket - Supermarket id.
- * @property {number} savings - Absolute savings in cents vs. current item.
- * @property {'specific'|'generic'} matchType - How the alternative was found.
- */
-
-/**
- * @typedef {Object} OptimizationResult
- * @property {boolean} hasAlternative - Whether a cheaper alternative exists.
- * @property {OptimizationAlternative|null} alternative - The best alternative.
  */
 
 /**
  * Pinia store managing the active shopping list.
  *
  * The list is persisted to localStorage via VueUse `useLocalStorage` so that
- * the user does not lose their items on a page reload. Optimization results
- * are kept alongside the items but are considered temporary and can be
- * cleared with `clearOptimizations`.
+ * the user does not lose their items on a page reload.
  *
  * @returns {object} Store state, getters and actions.
  */
@@ -126,7 +103,6 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
       gtin: product.gtin ?? null,
       checked: false,
       quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
-      optimization: null,
     }
     items.value.push(item)
   }
@@ -145,7 +121,6 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
       name: trimmed,
       checked: false,
       quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
-      optimization: null,
     })
   }
 
@@ -189,43 +164,6 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     item.quantity = next
   }
 
-  /**
-   * Replace an existing item with a cheaper alternative product.
-   * The uid is preserved so the UI keeps its position; only the product
-   * details are swapped. Optimization flags are reset.
-   * @param {string} uid - Unique item id to replace.
-   * @param {object} alternative - The alternative Typesense product document.
-   */
-  function swapItem(uid, alternative) {
-    const item = items.value.find((i) => i.uid === uid)
-    if (!item) return
-    item.name = alternative.name
-    item.brand = alternative.brand ?? null
-    item.imageUrl = alternative.imageUrl ?? null
-    item.retailPrice = alternative.retailPrice ?? null
-    item.basePrice = alternative.basePrice ?? null
-    item.baseUnit = alternative.baseUnit ?? null
-    item.supermarket = alternative.supermarket ?? null
-    item.gtin = alternative.gtin ?? null
-    item.type = 'product'
-    item.optimization = null
-  }
-
-  /**
-   * Store the optimization result for a specific item.
-   * @param {string} uid - Unique item id.
-   * @param {OptimizationResult} result - The optimization result.
-   */
-  function setOptimization(uid, result) {
-    const item = items.value.find((i) => i.uid === uid)
-    if (item) item.optimization = result
-  }
-
-  /** Remove all optimization results from every item. */
-  function clearOptimizations() {
-    for (const item of items.value) item.optimization = null
-  }
-
   /** Remove every item from the list. */
   function clearList() {
     items.value = []
@@ -244,9 +182,6 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     toggleChecked,
     setChecked,
     setQuantity,
-    swapItem,
-    setOptimization,
-    clearOptimizations,
     clearList,
   }
 })

@@ -20,7 +20,14 @@ import { supermarketLabel } from '@/utils/supermarkets'
  *   of the selected product should be added. The quantity resets to 1
  *   after every submission.
  */
-const { searchQuery, suggestions, isLoading, error } = useProductSearch()
+
+/**
+ * Reactive search input value. Owned by this component so it can be reset
+ * after a selection is made.
+ * @type {import('vue').Ref<string>}
+ */
+const searchQuery = ref('')
+const { suggestions, isLoading, error } = useProductSearch(searchQuery)
 const listStore = useShoppingListStore()
 const marketStore = useMarketStore()
 

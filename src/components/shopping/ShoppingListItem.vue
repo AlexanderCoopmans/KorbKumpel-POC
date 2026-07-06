@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useShoppingListStore } from '@/stores/shoppingList'
 import { formatPrice, formatBasePrice } from '@/utils/format'
@@ -9,31 +8,15 @@ import { supermarketLabel } from '@/utils/supermarkets'
  * Single shopping list item row.
  *
  * Displays the product (or raw text) with a checkbox to mark it as bought
- * and a delete button. When an optimization result is present, a savings
- * callout with a side-by-side comparison and an "Übernehmen" (swap) button
- * is shown.
+ * and a delete button.
  *
  * @prop {object} item - The shopping list item to render.
  */
-const props = defineProps({
+defineProps({
   item: { type: Object, required: true },
 })
 
 const listStore = useShoppingListStore()
-
-/** @type {import('vue').ComputedRef<boolean>} Whether a cheaper alternative exists. */
-const hasAlternative = computed(() => props.item.optimization?.hasAlternative === true)
-
-/** @type {import('vue').ComputedRef<object|null>} The alternative product. */
-const alternative = computed(() => props.item.optimization?.alternative ?? null)
-
-/**
- * Replace the current item with the cheaper alternative.
- */
-function swap() {
-  if (!alternative.value) return
-  listStore.swapItem(props.item.uid, alternative.value)
-}
 </script>
 
 <template>
@@ -112,47 +95,6 @@ function swap() {
       >
         <Icon icon="lucide:trash-2" />
       </button>
-    </div>
-
-    <!-- Optimization callout -->
-    <div
-      v-if="hasAlternative && alternative"
-      v-auto-animate
-      class="alert alert-success alert-soft mt-3 py-2 px-3"
-      role="alert"
-    >
-      <div class="flex flex-col gap-2 w-full">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="badge badge-success badge-sm">
-            −{{ formatPrice(alternative.savings) }}
-          </span>
-          <span class="text-xs font-medium">
-            Günstigere Alternative gefunden
-            <span v-if="alternative.matchType === 'generic'">(Eigenmarke)</span>
-          </span>
-        </div>
-
-        <!-- Side-by-side comparison -->
-        <div class="grid grid-cols-2 gap-2 text-xs">
-          <div class="rounded-lg bg-base-200/70 p-2">
-            <p class="font-semibold text-base-content/60 mb-1">Aktuell</p>
-            <p class="truncate">{{ item.name }}</p>
-            <p class="text-base-content/70">{{ formatBasePrice(item.basePrice, item.baseUnit) }}</p>
-          </div>
-          <div class="rounded-lg bg-success/10 p-2">
-            <p class="font-semibold text-success mb-1">Vorschlag</p>
-            <p class="truncate">{{ alternative.name }}</p>
-            <p class="text-base-content/70">
-              {{ formatBasePrice(alternative.basePrice, alternative.baseUnit) }}
-            </p>
-            <p class="text-base-content/60 mt-0.5">
-              {{ supermarketLabel(alternative.supermarket) }}
-            </p>
-          </div>
-        </div>
-
-        <button class="btn btn-success btn-sm btn-block mt-1" @click="swap">Übernehmen</button>
-      </div>
     </div>
   </li>
 </template>

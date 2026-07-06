@@ -37,11 +37,15 @@ const COLLECTION_NAME = 'products'
  * injected into every query. Results are sorted by `basePrice` ascending so
  * the cheapest product per kilogram/liter is shown first.
  *
- * @returns {object} Reactive search state and the `search` trigger.
+ * The `searchQuery` ref is owned by the calling component and passed in so
+ * the caller stays in control of the input value (e.g. to reset it after a
+ * selection).
+ *
+ * @param {import('vue').Ref<string>} searchQuery - Reactive search input
+ *   value owned by the caller.
+ * @returns {object} Reactive search state and the `performSearch` trigger.
  */
-export function useProductSearch() {
-  /** @type {import('vue').Ref<string>} Current search input value. */
-  const searchQuery = ref('')
+export function useProductSearch(searchQuery) {
   /** @type {import('vue').Ref<SearchSuggestion[]>} Suggestion list. */
   const suggestions = ref([])
   /** @type {import('vue').Ref<boolean>} Loading indicator. */
@@ -74,7 +78,7 @@ export function useProductSearch() {
       /** @type {object} */
       const searchParams = {
         q: query,
-        query_by: 'name,brand,supermarket',
+        query_by: 'name,brand,supermarket,genericCategory',
         sort_by: 'basePrice:asc,_text_match:desc',
         per_page: 12,
       }
@@ -110,7 +114,6 @@ export function useProductSearch() {
   })
 
   return {
-    searchQuery,
     suggestions,
     isLoading,
     error,

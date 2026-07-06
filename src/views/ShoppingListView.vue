@@ -14,7 +14,6 @@ import OptimizeButton from '@/components/shopping/OptimizeButton.vue'
  * The primary interactive workspace of the application. Contains the
  * supermarket pre-selection trigger, the smart search input, the grouped list
  * of items and the persistent optimization button.
- *
  * When the view is opened and no supermarkets have been selected yet (also
  * true on first visit after a page reload with an empty localStorage), the
  * supermarket pre-selection modal opens automatically.
