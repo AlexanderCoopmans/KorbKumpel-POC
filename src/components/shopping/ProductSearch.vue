@@ -53,9 +53,6 @@ function selectSuggestion(suggestion) {
 
 <template>
   <div class="w-full space-y-2">
-    <label class="label">
-      <span class="label-text font-medium">Produkt suchen</span>
-    </label>
     <div class="flex items-center gap-2">
       <!-- Quantity input (left of the search field) -->
       <input
