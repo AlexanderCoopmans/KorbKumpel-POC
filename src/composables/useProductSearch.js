@@ -41,11 +41,28 @@ const COLLECTION_NAME = 'products'
  * the caller stays in control of the input value (e.g. to reset it after a
  * selection).
  *
+ * Callers may override the Typesense `query_by`, `sort_by` and `per_page`
+ * search parameters via the `options` argument. Sensible defaults are
+ * provided so callers can omit any subset of them.
+ *
  * @param {import('vue').Ref<string>} searchQuery - Reactive search input
  *   value owned by the caller.
+ * @param {object} [options] - Optional search configuration.
+ * @param {string} [options.queryBy='name,brand,supermarket,genericCategory']
+ *   Comma-separated list of fields Typesense should match against.
+ * @param {string} [options.sortBy='basePrice:asc,_text_match:desc'] -
+ *   Sort expression forwarded to Typesense.
+ * @param {number} [options.perPage=12] - Number of results to request.
  * @returns {object} Reactive search state and the `performSearch` trigger.
  */
-export function useProductSearch(searchQuery) {
+export function useProductSearch(
+  searchQuery,
+  {
+    queryBy = 'name,brand,supermarket,genericCategory',
+    sortBy = 'basePrice:asc,_text_match:desc',
+    perPage = 12,
+  } = {},
+) {
   /** @type {import('vue').Ref<SearchSuggestion[]>} Suggestion list. */
   const suggestions = ref([])
   /** @type {import('vue').Ref<boolean>} Loading indicator. */
@@ -78,9 +95,9 @@ export function useProductSearch(searchQuery) {
       /** @type {object} */
       const searchParams = {
         q: query,
-        query_by: 'name,brand,supermarket,genericCategory',
-        sort_by: 'basePrice:asc,_text_match:desc',
-        per_page: 12,
+        query_by: queryBy,
+        sort_by: sortBy,
+        per_page: perPage,
       }
       if (filterBy.value) searchParams.filter_by = filterBy.value
 
