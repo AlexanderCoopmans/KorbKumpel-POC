@@ -18,7 +18,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        notfound: 'index.html',
+        notfound: '404.html',
       },
       output: {
         sanitizeFileName: (name) => {
