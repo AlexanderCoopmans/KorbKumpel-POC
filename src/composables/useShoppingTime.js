@@ -64,19 +64,72 @@ export function useShoppingTime() {
   })
 
   /**
+   * Set of supermarket ids that are actually "visited" — i.e. that have at
+   * least one specific product on the shopping list. Raw items (`__raw__`)
+   * are excluded because they are not tied to a specific store and therefore
+   * do not extend the driving route.
+   * @type {import('vue').ComputedRef<string[]>}
+   */
+  const visitedSupermarketIds = computed(() =>
+    listStore.groupedItems
+      .filter((g) => g.supermarket !== '__raw__')
+      .map((g) => g.supermarket)
+      .sort(),
+  )
+
+  /**
+   * Stable combination key for the visited supermarkets (sorted ids joined
+   * by `+`). Matches the `id` field of the route options produced by the
+   * discovery pipeline.
+   * @type {import('vue').ComputedRef<string>}
+   */
+  const visitedCombinationKey = computed(() => visitedSupermarketIds.value.join('+'))
+
+  /**
+   * The discovered route that exactly matches the set of supermarkets the
+   * user actually visits (has at least one product for). Used to derive the
+   * driving duration that reflects only the stores really being driven to.
+   *
+   * Falls back to `null` when no matching route exists (e.g. the visited
+   * combination was not part of the discovery result, or no discovery has
+   * been run yet).
+   * @type {import('vue').ComputedRef<object|null>}
+   */
+  const visitedRoute = computed(() => {
+    if (visitedCombinationKey.value.length === 0) return null
+    return marketStore.lastRoutes.find((r) => r.id === visitedCombinationKey.value) ?? null
+  })
+
+  /**
+   * Driving duration (in seconds) for the route covering only the
+   * supermarkets that are actually visited (at least one product bought).
+   * When no matching route is available, this falls back to the persisted
+   * `routeDuration` of the full selected combination so the estimate degrades
+   * gracefully.
+   * @type {import('vue').ComputedRef<number>}
+   */
+  const drivingDuration = computed(() => {
+    if (visitedRoute.value) return visitedRoute.value.totalDuration ?? 0
+    return marketStore.routeDuration ?? 0
+  })
+
+  /**
    * Estimated total shopping time in seconds: driving duration + the sum of
    * all group stay durations.
    *
-   * The driving duration is only included when a location-based discovery
-   * was performed and not denied. When the user denied geolocation (or no
-   * discovery has been run yet), the driving portion is excluded so the
-   * estimate only reflects the in-store shopping time.
+   * The driving duration reflects only the supermarkets that are actually
+   * visited (i.e. have at least one product on the list), looked up from
+   * the persisted discovery routes. It is only included when a
+   * location-based discovery was performed and not denied. When the user
+   * denied geolocation (or no discovery has been run yet), the driving
+   * portion is excluded so the estimate only reflects the in-store shopping
+   * time.
    * @type {import('vue').ComputedRef<number>}
    */
   const totalTime = computed(() => {
     let seconds = 0
     if (marketStore.includeDrivingTime) {
-      seconds += marketStore.routeDuration ?? 0
+      seconds += drivingDuration.value
     }
     for (const key of Object.keys(groupTimes.value)) {
       seconds += groupTimes.value[key]
