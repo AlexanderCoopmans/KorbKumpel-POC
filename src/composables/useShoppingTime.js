@@ -53,7 +53,9 @@ export function useShoppingTime() {
     /** @type {Record<string, number>} */
     const times = {}
     for (const group of listStore.groupedItems) {
-      const itemCount = group.items.reduce((sum, i) => sum + (i.quantity ?? 1), 0)
+      // Count distinct items only — quantity (how often a product is bought)
+      // must NOT inflate the estimated in-store time.
+      const itemCount = group.items.length
       if (group.supermarket === '__raw__') {
         times[group.supermarket] = itemCount * PER_ITEM_SECONDS
       } else {
