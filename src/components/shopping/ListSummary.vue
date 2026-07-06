@@ -13,6 +13,8 @@ const listStore = useShoppingListStore()
 const total = computed(() => listStore.totalPrice)
 /** @type {import('vue').ComputedRef<number>} Number of items. */
 const count = computed(() => listStore.itemCount)
+/** @type {import('vue').ComputedRef<number>} Sum of all item quantities. */
+const quantity = computed(() => listStore.totalQuantity)
 /** @type {import('vue').ComputedRef<number>} Number of checked items. */
 const checked = computed(() => listStore.checkedCount)
 </script>
@@ -26,7 +28,7 @@ const checked = computed(() => listStore.checkedCount)
     <div class="stat">
       <div class="stat-title">Artikel</div>
       <div class="stat-value text-lg">{{ count }}</div>
-      <div class="stat-desc">{{ checked }} erledigt</div>
+      <div class="stat-desc">{{ quantity }} Stück · {{ checked }} erledigt</div>
     </div>
   </div>
 </template>

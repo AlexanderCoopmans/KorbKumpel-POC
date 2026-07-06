@@ -49,6 +49,16 @@ function swap() {
         @change="listStore.toggleChecked(item.uid)"
       />
 
+      <!-- Quantity input (left of the name) -->
+      <input
+        type="number"
+        min="1"
+        class="input input-bordered input-xs w-12 text-center shrink-0 px-1"
+        :value="item.quantity ?? 1"
+        aria-label="Menge"
+        @change="listStore.setQuantity(item.uid, Number($event.target.value))"
+      />
+
       <!-- Product image / placeholder -->
       <div class="avatar avatar-placeholder shrink-0">
         <div
@@ -84,7 +94,7 @@ function swap() {
       <!-- Price -->
       <div class="text-right shrink-0 min-w-0">
         <p v-if="item.retailPrice != null" class="font-semibold leading-tight whitespace-nowrap">
-          {{ formatPrice(item.retailPrice) }}
+          {{ formatPrice(item.retailPrice * (item.quantity ?? 1)) }}
         </p>
         <p
           v-if="item.basePrice != null"

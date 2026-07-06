@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useProductSearch } from '@/composables/useProductSearch'
 import { useMarketStore } from '@/stores/market'
@@ -16,6 +16,9 @@ import { supermarketLabel } from '@/utils/supermarkets'
  * - Results are sorted by `basePrice` ascending (cheapest first).
  * - Selecting a product adds it to the shopping list; selecting the raw
  *   fallback adds a plain text item.
+ * - A quantity input left of the search field lets the user pick how many
+ *   of the selected product should be added. The quantity resets to 1
+ *   after every submission.
  */
 const { searchQuery, suggestions, isLoading, error } = useProductSearch()
 const listStore = useShoppingListStore()
@@ -25,16 +28,26 @@ const marketStore = useMarketStore()
 const hasFilter = computed(() => marketStore.hasSelection)
 
 /**
- * Handle a suggestion click: add the item to the list and reset the input.
+ * Quantity to apply to the next selected product. Defaults to 1 and is
+ * reset to 1 after every submission.
+ * @type {import('vue').Ref<number>}
+ */
+const quantity = ref(1)
+
+/**
+ * Handle a suggestion click: add the item to the list with the current
+ * quantity and reset the input and quantity.
  * @param {object} suggestion - The selected suggestion.
  */
 function selectSuggestion(suggestion) {
+  const qty = Math.max(1, Math.floor(Number(quantity.value) || 1))
   if (suggestion.type === 'raw') {
-    listStore.addRawItem(suggestion.name)
+    listStore.addRawItem(suggestion.name, qty)
   } else if (suggestion.type === 'product' && suggestion.product) {
-    listStore.addProduct(suggestion.product)
+    listStore.addProduct(suggestion.product, qty)
   }
   searchQuery.value = ''
+  quantity.value = 1
 }
 </script>
 
@@ -43,17 +56,28 @@ function selectSuggestion(suggestion) {
     <label class="label">
       <span class="label-text font-medium">Produkt suchen</span>
     </label>
-    <div class="relative">
+    <div class="flex items-center gap-2">
+      <!-- Quantity input (left of the search field) -->
       <input
-        v-model="searchQuery"
-        type="text"
-        class="input input-bordered w-full pr-10"
-        :class="{ 'input-error': error }"
+        v-model.number="quantity"
+        type="number"
+        min="1"
+        class="input input-bordered w-16 text-center shrink-0 px-1"
+        aria-label="Menge"
       />
-      <span
-        v-if="isLoading"
-        class="loading loading-spinner loading-sm absolute right-3 top-1/2 -translate-y-1/2"
-      />
+      <!-- Search input -->
+      <div class="relative flex-1 min-w-0">
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="input input-bordered w-full pr-10"
+          :class="{ 'input-error': error }"
+        />
+        <span
+          v-if="isLoading"
+          class="loading loading-spinner loading-sm absolute right-3 top-1/2 -translate-y-1/2"
+        />
+      </div>
     </div>
 
     <p v-if="!hasFilter" class="text-xs text-warning flex items-center gap-1">

@@ -16,6 +16,7 @@ import { useLocalStorage } from '@vueuse/core'
  * @property {string} [supermarket] - Supermarket id (products only).
  * @property {string} [gtin] - GTIN / EAN code (products only).
  * @property {boolean} checked - Whether the item is marked as bought.
+ * @property {number} quantity - How many of this item should be bought (>= 1).
  * @property {object|null} optimization - Result of the optimization engine.
  *   `null` when no optimization has been run yet.
  */
@@ -58,18 +59,29 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
 
   /**
    * Computed total retail price of all (non-raw) items in cents.
-   * Raw text items do not have a price and are ignored.
+   * Raw text items do not have a price and are ignored. The price of each
+   * item is multiplied by its `quantity`.
    * @type {import('vue').ComputedRef<number>}
    */
   const totalPrice = computed(() =>
     items.value.reduce(
-      (sum, item) => sum + (typeof item.retailPrice === 'number' ? item.retailPrice : 0),
+      (sum, item) =>
+        sum + (typeof item.retailPrice === 'number' ? item.retailPrice * (item.quantity ?? 1) : 0),
       0,
     ),
   )
 
   /** @type {import('vue').ComputedRef<number>} Number of items on the list. */
   const itemCount = computed(() => items.value.length)
+
+  /**
+   * Total quantity across all items (sum of every item's `quantity`).
+   * Falls back to 1 for legacy items without a `quantity` field.
+   * @type {import('vue').ComputedRef<number>}
+   */
+  const totalQuantity = computed(() =>
+    items.value.reduce((sum, item) => sum + (item.quantity ?? 1), 0),
+  )
 
   /** @type {import('vue').ComputedRef<number>} Number of checked (bought) items. */
   const checkedCount = computed(() => items.value.filter((i) => i.checked).length)
@@ -97,8 +109,9 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
   /**
    * Add a Typesense product document to the shopping list.
    * @param {object} product - A Typesense product document.
+   * @param {number} [quantity=1] - How many of this item should be bought.
    */
-  function addProduct(product) {
+  function addProduct(product, quantity = 1) {
     /** @type {ShoppingListItem} */
     const item = {
       uid: crypto.randomUUID(),
@@ -112,6 +125,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
       supermarket: product.supermarket ?? null,
       gtin: product.gtin ?? null,
       checked: false,
+      quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
       optimization: null,
     }
     items.value.push(item)
@@ -120,8 +134,9 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
   /**
    * Add a plain text fallback item (the raw suggestion from the search).
    * @param {string} name - The exact text the user typed.
+   * @param {number} [quantity=1] - How many of this item should be bought.
    */
-  function addRawItem(name) {
+  function addRawItem(name, quantity = 1) {
     const trimmed = name.trim()
     if (!trimmed) return
     items.value.push({
@@ -129,6 +144,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
       type: 'raw',
       name: trimmed,
       checked: false,
+      quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
       optimization: null,
     })
   }
@@ -159,6 +175,18 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
   function setChecked(uid, value) {
     const item = items.value.find((i) => i.uid === uid)
     if (item) item.checked = value
+  }
+
+  /**
+   * Set the quantity of an item. Values below 1 are clamped to 1.
+   * @param {string} uid - Unique item id.
+   * @param {number} quantity - New quantity (>= 1).
+   */
+  function setQuantity(uid, quantity) {
+    const item = items.value.find((i) => i.uid === uid)
+    if (!item) return
+    const next = Math.max(1, Math.floor(Number(quantity) || 1))
+    item.quantity = next
   }
 
   /**
@@ -207,6 +235,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     items,
     totalPrice,
     itemCount,
+    totalQuantity,
     checkedCount,
     groupedItems,
     addProduct,
@@ -214,6 +243,7 @@ export const useShoppingListStore = defineStore('shoppingList', () => {
     removeItem,
     toggleChecked,
     setChecked,
+    setQuantity,
     swapItem,
     setOptimization,
     clearOptimizations,
