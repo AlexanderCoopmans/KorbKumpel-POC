@@ -66,9 +66,10 @@ async function initMap() {
   if (!mapEl.value || map) return
 
   map = L.map(mapEl.value, { zoomControl: true, attributionControl: true })
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
     maxZoom: 19,
-    attribution: '© OpenStreetMap',
   }).addTo(map)
   markerLayer = L.layerGroup().addTo(map)
   map.setView([51.1657, 10.4515], 6) // Default: Germany center

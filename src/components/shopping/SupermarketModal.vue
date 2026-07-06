@@ -300,7 +300,7 @@ function close() {
       </div>
 
       <!-- Supermarket badges (combination selection) -->
-      <div v-if="locationDenied || availableSupermarketIds.length > 0" class="space-y-2">
+      <div v-if="locationDenied || availableSupermarketIds.length > 0" class="space-y-2 w-full">
         <h4 class="text-sm font-semibold">Supermarkt-Kombination wählen</h4>
         <SupermarketBadges
           :available="
