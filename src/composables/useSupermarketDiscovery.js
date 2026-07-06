@@ -1,5 +1,6 @@
-import { ref, computed, readonly } from 'vue'
+import { ref, computed, readonly, watch } from 'vue'
 import { useGeolocation } from '@vueuse/core'
+import { useMarketStore } from '@/stores/market'
 import { brandRegex, brandToSupermarketId } from '@/utils/brandMapping'
 import { supermarketLabel } from '@/utils/supermarkets'
 
@@ -46,6 +47,8 @@ const OSRM_TABLE_URL = 'https://router.project-osrm.org/table/v1/driving'
  * @returns {object} Reactive state and the `discover` action.
  */
 export function useSupermarketDiscovery() {
+  const marketStore = useMarketStore()
+
   /**
    * Reactive geolocation powered by VueUse's `useGeolocation`. It wraps the
    * native `navigator.geolocation.watchPosition` stream and exposes the
@@ -112,10 +115,13 @@ export function useSupermarketDiscovery() {
 
   /**
    * Origin coordinate used for routing. Mirrors `coords` but is exposed as a
-   * computed so consumers can react to location changes.
+   * computed so consumers can react to location changes. Falls back to the
+   * persisted `lastOrigin` from the store when no live geolocation fix is
+   * available yet, so the map can be restored on reload without waiting for
+   * a fresh fix.
    * @type {import('vue').ComputedRef<{lat: number, lng: number}|null>}
    */
-  const origin = computed(() => coords.value)
+  const origin = computed(() => coords.value ?? marketStore.lastOrigin ?? null)
 
   /** @type {import('vue').Ref<number>} Maximum acceptable total driving distance in meters. The search radius is derived from this value. */
   const maxDistance = ref(20000)
@@ -127,10 +133,10 @@ export function useSupermarketDiscovery() {
    */
   const radius = computed(() => maxDistance.value)
 
-  /** @type {import('vue').Ref<DiscoveredSupermarket[]>} Raw Overpass results. */
-  const supermarkets = ref([])
-  /** @type {import('vue').Ref<RouteOption[]>} Calculated route options. */
-  const routes = ref([])
+  /** @type {import('vue').Ref<DiscoveredSupermarket[]>} Raw Overpass results. Seeded from the persisted store so the map can be restored on reload. */
+  const supermarkets = ref([...marketStore.lastSupermarkets])
+  /** @type {import('vue').Ref<RouteOption[]>} Calculated route options. Seeded from the persisted store. */
+  const routes = ref([...marketStore.lastRoutes])
 
   /** @type {import('vue').Ref<boolean>} Whether a discovery run is in progress. */
   const isLoading = ref(false)
@@ -468,6 +474,7 @@ export function useSupermarketDiscovery() {
         // coordinates yet (or the user denied permission), we surface the
         // geolocation error and abort so the UI can offer a manual fallback.
         error.value = geoError.value?.message ?? 'Standort konnte nicht ermittelt werden'
+        marketStore.markLocationDenied()
         return
       }
 
@@ -489,6 +496,9 @@ export function useSupermarketDiscovery() {
         // pruning, or a 400 error). Fall back to showing the discovered
         // supermarkets as selectable badges without route calculations.
         routes.value = []
+        // Persist the partial result (origin + supermarkets) so the map
+        // can still be restored on reload.
+        marketStore.setDiscoveryResult(userOrigin, pruned, [])
         return
       }
 
@@ -504,12 +514,40 @@ export function useSupermarketDiscovery() {
         }
       }
       supermarkets.value = pruned.filter((s) => reachableIds.has(s.osmId))
+
+      // Persist the full discovery result so it can be restored on reload
+      // without re-running the Overpass/OSRM pipeline.
+      marketStore.setDiscoveryResult(userOrigin, supermarkets.value, routes.value)
     } catch (err) {
       error.value = err?.message ?? 'Suche fehlgeschlagen'
     } finally {
       isLoading.value = false
     }
   }
+
+  /**
+   * Persist the latest origin to the store whenever a new geolocation fix
+   * arrives, so the map can be restored on reload even if the user does
+   * not run a fresh discovery.
+   */
+  watch(origin, (val) => {
+    if (val) {
+      marketStore.lastOrigin = { lat: val.lat, lng: val.lng }
+      // A successful fix clears the denied flag.
+      if (marketStore.locationDenied) marketStore.locationDenied = false
+    }
+  })
+
+  /**
+   * When the geolocation watch reports an error (e.g. permission denied),
+   * mark the location as denied so the app falls back to manual badge
+   * selection and excludes driving time from the total estimate.
+   */
+  watch(geoError, (err) => {
+    if (err && !origin.value) {
+      marketStore.markLocationDenied()
+    }
+  })
 
   return {
     // Geolocation (powered by VueUse `useGeolocation`)

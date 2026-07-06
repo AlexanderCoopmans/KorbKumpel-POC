@@ -46,9 +46,11 @@ const selectedRoute = ref(null)
 /**
  * Working copy of the selected supermarket ids for the badge selection. This
  * is independent from the persisted store until the user applies it.
+ * Seeded from the persisted store selection so previously chosen
+ * supermarkets are preselected when the modal is opened after a reload.
  * @type {import('vue').Ref<string[]>}
  */
-const badgeSelection = ref([])
+const badgeSelection = ref([...marketStore.selectedMarkets])
 
 /** @type {import('vue').ComputedRef<boolean>} Whether geolocation is available. */
 const geoAvailable = computed(() => geoSupported.value && !!origin.value)
@@ -56,9 +58,12 @@ const geoAvailable = computed(() => geoSupported.value && !!origin.value)
 /**
  * Whether the user denied or failed geolocation. In this case the modal
  * falls back to a badge-only selection with all supported supermarkets.
+ * Mirrors the persisted store flag so the fallback survives reloads.
  * @type {import('vue').ComputedRef<boolean>}
  */
-const locationDenied = computed(() => !!geoError.value && !origin.value)
+const locationDenied = computed(
+  () => (!!geoError.value && !origin.value) || marketStore.locationDenied,
+)
 
 /**
  * Whether the location-based discovery UI (map, routes, distance input)
@@ -204,6 +209,22 @@ watch(matchedRoute, (r) => {
   selectedRoute.value = r
 })
 
+// When the modal is opened, seed the badge selection from the persisted
+// store selection so previously chosen supermarkets are preselected after
+// a page reload. Also restore the matching route highlight when routes
+// are already available from the persisted discovery state.
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      badgeSelection.value = [...marketStore.selectedMarkets]
+      if (matchedRoute.value) {
+        selectedRoute.value = matchedRoute.value
+      }
+    }
+  },
+)
+
 // Control the native dialog element via the HTML Dialog API.
 watch(
   () => props.open,
@@ -220,12 +241,14 @@ watch(
 )
 
 /**
- * Trigger the discovery pipeline. Resets the current selection first.
+ * Trigger the discovery pipeline. Resets the current selection first and
+ * clears the persisted discovery state so a fresh run starts clean.
  * @returns {Promise<void>}
  */
 async function runDiscovery() {
   selectedRoute.value = null
   badgeSelection.value = []
+  marketStore.clearDiscovery()
   await discover()
 }
 

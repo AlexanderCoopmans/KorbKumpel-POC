@@ -28,7 +28,7 @@ const PER_ITEM_SECONDS = 30
  * Centralized here so both `ListSummary` (total) and `GroupedList` (per-group)
  * render consistent values without duplicating the formula.
  *
- * @returns {{ totalTime: import('vue').ComputedRef<number>, groupTimes: import('vue').ComputedRef<Record<string, number>>, rawItemCount: import('vue').ComputedRef<number> }}
+ * @returns {{ totalTime: import('vue').ComputedRef<number>, groupTimes: import('vue').ComputedRef<Record<string, number>>, rawItemCount: import('vue').ComputedRef<number>, includesDriving: import('vue').ComputedRef<boolean> }}
  */
 export function useShoppingTime() {
   const listStore = useShoppingListStore()
@@ -66,15 +66,30 @@ export function useShoppingTime() {
   /**
    * Estimated total shopping time in seconds: driving duration + the sum of
    * all group stay durations.
+   *
+   * The driving duration is only included when a location-based discovery
+   * was performed and not denied. When the user denied geolocation (or no
+   * discovery has been run yet), the driving portion is excluded so the
+   * estimate only reflects the in-store shopping time.
    * @type {import('vue').ComputedRef<number>}
    */
   const totalTime = computed(() => {
-    let seconds = marketStore.routeDuration ?? 0
+    let seconds = 0
+    if (marketStore.includeDrivingTime) {
+      seconds += marketStore.routeDuration ?? 0
+    }
     for (const key of Object.keys(groupTimes.value)) {
       seconds += groupTimes.value[key]
     }
     return seconds
   })
 
-  return { totalTime, groupTimes, rawItemCount }
+  /**
+   * Whether the driving duration is included in the total time estimate.
+   * Exposed so the UI can decide whether to show the "Fahrt" label.
+   * @type {import('vue').ComputedRef<boolean>}
+   */
+  const includesDriving = computed(() => marketStore.includeDrivingTime)
+
+  return { totalTime, groupTimes, rawItemCount, includesDriving }
 }

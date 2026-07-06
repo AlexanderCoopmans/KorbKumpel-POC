@@ -15,7 +15,7 @@ import { formatPrice, formatDuration } from '@/utils/format'
  * Displayed above the grouped list.
  */
 const listStore = useShoppingListStore()
-const { totalTime } = useShoppingTime()
+const { totalTime, includesDriving } = useShoppingTime()
 
 /** @type {import('vue').ComputedRef<number>} Total retail price in cents. */
 const total = computed(() => listStore.totalPrice)
@@ -41,7 +41,7 @@ const checked = computed(() => listStore.checkedCount)
     <div class="stat">
       <div class="stat-title">Dauer</div>
       <div class="stat-value text-lg">{{ formatDuration(totalTime) }}</div>
-      <div class="stat-desc">Fahrt + Aufenthalt</div>
+      <div class="stat-desc">{{ includesDriving ? 'Fahrt + Aufenthalt' : 'nur Aufenthalt' }}</div>
     </div>
   </div>
 </template>

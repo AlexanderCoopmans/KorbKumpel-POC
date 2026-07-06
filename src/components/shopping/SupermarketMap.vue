@@ -107,7 +107,11 @@ function removeRoutingControl() {
  */
 function buildWaypoints() {
   if (!props.origin || !props.selectedRoute?.stops?.length) return []
-  const stops = props.selectedRoute.stops
+  if (!Number.isFinite(props.origin.lat) || !Number.isFinite(props.origin.lng)) return []
+  const stops = props.selectedRoute.stops.filter(
+    (s) => Number.isFinite(s.lat) && Number.isFinite(s.lon),
+  )
+  if (stops.length === 0) return []
   /** @type {L.LatLng[]} */
   const points = [
     L.latLng(props.origin.lat, props.origin.lng),
@@ -167,6 +171,9 @@ function updateRoute() {
 /**
  * Redraw all custom markers based on the current props. The driving route
  * itself is handled separately by `updateRoute()` via the routing machine.
+ *
+ * Invalid or incomplete coordinates (e.g. from corrupted persisted state)
+ * are silently skipped so the map never throws.
  */
 function redraw() {
   if (!map || !markerLayer) return
@@ -175,7 +182,7 @@ function redraw() {
   const bounds = []
 
   // User location marker.
-  if (props.origin) {
+  if (props.origin && Number.isFinite(props.origin.lat) && Number.isFinite(props.origin.lng)) {
     const m = L.marker([props.origin.lat, props.origin.lng], {
       icon: userIcon(),
     }).addTo(markerLayer)
@@ -185,6 +192,7 @@ function redraw() {
 
   // Supermarket markers.
   for (const store of props.supermarkets) {
+    if (!Number.isFinite(store.lat) || !Number.isFinite(store.lon)) continue
     const m = L.marker([store.lat, store.lon], {
       icon: storeIcon(store.supermarketId),
     }).addTo(markerLayer)
