@@ -5,6 +5,24 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-routing-machine'
 import 'leaflet-routing-machine/dist/leaflet-routing-machine.css'
 
+// Supermarket logos imported via Vite so the bundler resolves the paths.
+import aldiLogo from '@/assets/supermarket-logos/aldi.jpg'
+import reweLogo from '@/assets/supermarket-logos/Rewe_Logo.png'
+import lidlLogo from '@/assets/supermarket-logos/Lidl-Logo.webp'
+import nettoLogo from '@/assets/supermarket-logos/Netto_logo.svg'
+
+/**
+ * Map of internal supermarket id -> resolved logo URL.
+ * Used to pick the correct icon for each store marker.
+ * @type {Record<string, string>}
+ */
+const SUPERMARKET_LOGOS = {
+  'aldi-sued': aldiLogo,
+  rewe: reweLogo,
+  lidl: lidlLogo,
+  'netto-marken-discount': nettoLogo,
+}
+
 /**
  * Interactive Leaflet map used inside the supermarket modal.
  *
@@ -168,7 +186,7 @@ function redraw() {
   // Supermarket markers.
   for (const store of props.supermarkets) {
     const m = L.marker([store.lat, store.lon], {
-      icon: storeIcon(),
+      icon: storeIcon(store.supermarketId),
     }).addTo(markerLayer)
     m.bindPopup(`${store.label}${store.name ? ` – ${store.name}` : ''}`)
     bounds.push([store.lat, store.lon])
@@ -195,15 +213,43 @@ function userIcon() {
 }
 
 /**
- * Build a red pin marker for supermarkets.
+ * Size (in px) for the supermarket logo markers.
+ * @type {number}
+ */
+const STORE_ICON_SIZE = 32
+
+/**
+ * Build a logo marker for a supermarket. The marker is a circular badge
+ * containing the chain's logo, so it is immediately clear on the map which
+ * supermarket is located where. Falls back to a generic red pin when the
+ * supermarket id is unknown.
+ *
+ * @param {string} [supermarketId] - Internal supermarket id.
  * @returns {L.DivIcon}
  */
-function storeIcon() {
+function storeIcon(supermarketId) {
+  const logoUrl = supermarketId ? SUPERMARKET_LOGOS[supermarketId] : null
+  if (!logoUrl) {
+    return L.divIcon({
+      className: 'kk-store-marker',
+      html: '<div style="width:14px;height:14px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    })
+  }
+  const size = STORE_ICON_SIZE
+  const half = size / 2
   return L.divIcon({
     className: 'kk-store-marker',
-    html: '<div style="width:14px;height:14px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    html:
+      `<div style="width:${size}px;height:${size}px;border-radius:50%;` +
+      `background:#fff;border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.45);` +
+      `overflow:hidden;display:flex;align-items:center;justify-content:center">` +
+      `<img src="${logoUrl}" alt="" style="width:100%;height:100%;object-fit:contain"/>` +
+      `</div>`,
+    iconSize: [size, size],
+    iconAnchor: [half, half],
+    popupAnchor: [0, -half],
   })
 }
 
