@@ -235,6 +235,30 @@ function close() {
         </button>
       </div>
 
+      <!-- Supermarket badges (combination selection) -->
+      <div v-if="locationDenied || availableSupermarketIds.length > 0" class="space-y-2">
+        <h4 class="text-sm font-semibold">Supermarkt-Kombination wählen</h4>
+        <SupermarketBadges
+          :available="
+            locationDenied ? SUPPORTED_SUPERMARKETS.map((m) => m.id) : availableSupermarketIds
+          "
+          :selected="locationDenied ? marketStore.selectedMarkets : badgeSelection"
+          :marginal-costs="marginalCosts"
+          :show-costs="!locationDenied"
+          @toggle="locationDenied ? toggleMarket($event) : toggleBadge($event)"
+        />
+        <!-- Total driving distance for the current selection -->
+        <div
+          v-if="!locationDenied && badgeSelection.length > 0"
+          class="flex items-center gap-2 text-sm text-base-content/70"
+        >
+          <Icon icon="lucide:route" width="16" />
+          <span
+            >Gesamtfahrstrecke: <strong>{{ totalDistanceLabel }}</strong></span
+          >
+        </div>
+      </div>
+
       <!-- Geolocation status -->
       <div v-if="locationDenied" class="alert alert-warning text-sm py-2">
         <Icon icon="lucide:map-pin-off" width="16" />
@@ -287,30 +311,6 @@ function close() {
         :supermarkets="supermarkets"
         :selected-route="selectedRoute"
       />
-
-      <!-- Supermarket badges (combination selection) -->
-      <div v-if="locationDenied || availableSupermarketIds.length > 0" class="space-y-2">
-        <h4 class="text-sm font-semibold">Supermarkt-Kombination wählen</h4>
-        <SupermarketBadges
-          :available="
-            locationDenied ? SUPPORTED_SUPERMARKETS.map((m) => m.id) : availableSupermarketIds
-          "
-          :selected="locationDenied ? marketStore.selectedMarkets : badgeSelection"
-          :marginal-costs="marginalCosts"
-          :show-costs="!locationDenied"
-          @toggle="locationDenied ? toggleMarket($event) : toggleBadge($event)"
-        />
-        <!-- Total driving distance for the current selection -->
-        <div
-          v-if="!locationDenied && badgeSelection.length > 0"
-          class="flex items-center gap-2 text-sm text-base-content/70"
-        >
-          <Icon icon="lucide:route" width="16" />
-          <span
-            >Gesamtfahrstrecke: <strong>{{ totalDistanceLabel }}</strong></span
-          >
-        </div>
-      </div>
     </div>
 
     <form method="dialog" class="modal-backdrop">
