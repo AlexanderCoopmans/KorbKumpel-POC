@@ -4,6 +4,7 @@ import { Icon } from '@iconify/vue'
 import { useMarketStore } from '@/stores/market'
 import { useSupermarketDiscovery } from '@/composables/useSupermarketDiscovery'
 import { SUPPORTED_SUPERMARKETS } from '@/utils/supermarkets'
+import { formatDuration, formatDistance } from '@/utils/format'
 import SupermarketMap from '@/components/shopping/SupermarketMap.vue'
 import SupermarketBadges from '@/components/shopping/SupermarketBadges.vue'
 /**
@@ -102,6 +103,16 @@ const currentSelectionDistance = computed(() => {
 })
 
 /**
+ * Total duration of the currently selected badge combination, or 0 when no
+ * badges are selected. Used as the baseline for computing marginal durations.
+ * @type {import('vue').ComputedRef<number>}
+ */
+const currentSelectionDuration = computed(() => {
+  if (badgeSelection.value.length === 0) return 0
+  return getRouteForCombination(badgeSelection.value)?.totalDuration ?? 0
+})
+
+/**
  * Map of supermarket id -> additional distance (in meters) incurred by
  * adding that supermarket to the current badge selection. When the
  * supermarket is already selected, the value is 0. When no valid route
@@ -128,6 +139,32 @@ const marginalCosts = computed(() => {
 })
 
 /**
+ * Map of supermarket id -> additional duration (in seconds) incurred by
+ * adding that supermarket to the current badge selection. When the
+ * supermarket is already selected, the value is 0. When no valid route
+ * exists for the resulting combination, the value is `null`.
+ * @type {import('vue').ComputedRef<Record<string, number|null>>}
+ */
+const marginalDurations = computed(() => {
+  /** @type {Record<string, number|null>} */
+  const durations = {}
+  for (const id of availableSupermarketIds.value) {
+    if (badgeSelection.value.includes(id)) {
+      durations[id] = 0
+      continue
+    }
+    const extended = [...badgeSelection.value, id]
+    const route = getRouteForCombination(extended)
+    if (!route) {
+      durations[id] = null
+    } else {
+      durations[id] = Math.max(0, route.totalDuration - currentSelectionDuration.value)
+    }
+  }
+  return durations
+})
+
+/**
  * Route ids whose supermarket combination exactly matches the current badge
  * selection. Used to highlight matching route cards.
  * @type {import('vue').ComputedRef<string[]>}
@@ -149,15 +186,16 @@ const matchedRoute = computed(() => {
 })
 
 /**
- * Human readable label for the total driving distance of the current badge
- * selection. Empty when no badges are selected.
+ * Human readable label for the total driving duration of the current badge
+ * selection, followed by the total distance in parentheses. Empty when no
+ * badges are selected.
  * @type {import('vue').ComputedRef<string>}
  */
-const totalDistanceLabel = computed(() => {
+const totalDurationLabel = computed(() => {
+  const d = currentSelectionDuration.value
   const m = currentSelectionDistance.value
-  if (m === 0) return ''
-  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
-  return `${Math.round(m)} m`
+  if (d === 0 && m === 0) return ''
+  return `${formatDuration(d)} (${formatDistance(m)})`
 })
 
 // Keep the highlighted route in sync with the badge selection so the map
@@ -193,7 +231,8 @@ async function runDiscovery() {
 
 /**
  * Toggle a supermarket id in the working badge selection and immediately
- * persist the new selection to the market store.
+ * persist the new selection together with the route metrics to the market
+ * store.
  * @param {string} id - Supermarket id.
  */
 function toggleBadge(id) {
@@ -204,6 +243,8 @@ function toggleBadge(id) {
     badgeSelection.value = badgeSelection.value.filter((x) => x !== id)
   }
   marketStore.setMarkets(badgeSelection.value)
+  const route = getRouteForCombination(badgeSelection.value)
+  marketStore.setRouteMetrics(route?.totalDistance ?? 0, route?.totalDuration ?? 0)
 }
 
 /**
@@ -244,17 +285,18 @@ function close() {
           "
           :selected="locationDenied ? marketStore.selectedMarkets : badgeSelection"
           :marginal-costs="marginalCosts"
+          :marginal-durations="marginalDurations"
           :show-costs="!locationDenied"
           @toggle="locationDenied ? toggleMarket($event) : toggleBadge($event)"
         />
-        <!-- Total driving distance for the current selection -->
+        <!-- Total driving duration for the current selection -->
         <div
           v-if="!locationDenied && badgeSelection.length > 0"
           class="flex items-center gap-2 text-sm text-base-content/70"
         >
-          <Icon icon="lucide:route" width="16" />
+          <Icon icon="lucide:clock" width="16" />
           <span
-            >Gesamtfahrstrecke: <strong>{{ totalDistanceLabel }}</strong></span
+            >Gesamtfahrzeit: <strong>{{ totalDurationLabel }}</strong></span
           >
         </div>
       </div>

@@ -14,18 +14,34 @@ import { supermarketLabel } from '@/utils/supermarkets'
  * @prop {string[]} selected - Currently selected supermarket ids (working copy).
  * @prop {Record<string, number|null>} marginalCosts - Map of supermarket id
  *   to additional distance in meters (or null when no valid route exists).
+ * @prop {Record<string, number|null>} marginalDurations - Map of supermarket
+ *   id to additional duration in seconds (or null when no valid route exists).
  * @prop {boolean} showCosts - Whether to display the marginal cost labels.
  */
 const props = defineProps({
   available: { type: Array, default: () => [] },
   selected: { type: Array, default: () => [] },
   marginalCosts: { type: Object, default: () => ({}) },
+  marginalDurations: { type: Object, default: () => ({}) },
   showCosts: { type: Boolean, default: false },
 })
 const emit = defineEmits(['toggle'])
 
 /**
- * Format a distance in meters as a human readable string.
+ * Format a duration in seconds as a compact string (e.g. "5 min").
+ * @param {number|null} s - Duration in seconds.
+ * @returns {string}
+ */
+function formatDuration(s) {
+  if (s == null) return '—'
+  const seconds = Math.round(s)
+  if (seconds < 60) return `+${seconds} s`
+  const m = Math.round(seconds / 60)
+  return `+${m} min`
+}
+
+/**
+ * Format a distance in meters as a compact string (e.g. "1 km").
  * @param {number|null} m - Distance in meters.
  * @returns {string}
  */
@@ -35,13 +51,14 @@ function formatDistance(m) {
   return `+${Math.round(m)} m`
 }
 
-/** @type {import('vue').ComputedRef<{id: string, label: string, active: boolean, cost: number|null}[]>} */
+/** @type {import('vue').ComputedRef<{id: string, label: string, active: boolean, cost: number|null, duration: number|null}[]>} */
 const badges = computed(() =>
   props.available.map((id) => ({
     id,
     label: supermarketLabel(id),
     active: props.selected.includes(id),
     cost: props.marginalCosts[id] ?? null,
+    duration: props.marginalDurations[id] ?? null,
   })),
 )
 
@@ -67,7 +84,7 @@ function toggle(id) {
       <span v-if="badge.active" class="text-xs">✓</span>
       {{ badge.label }}
       <span v-if="showCosts && !badge.active" class="text-xs opacity-70">
-        {{ formatDistance(badge.cost) }}
+        {{ formatDuration(badge.duration) }} ({{ formatDistance(badge.cost) }})
       </span>
     </button>
   </div>

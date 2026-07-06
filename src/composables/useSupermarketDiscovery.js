@@ -19,6 +19,7 @@ import { supermarketLabel } from '@/utils/supermarkets'
  * @property {string} id - Stable id (joined supermarket ids).
  * @property {DiscoveredSupermarket[]} stops - Ordered supermarkets visited.
  * @property {number} totalDistance - Total driving distance in meters.
+ * @property {number} totalDuration - Total driving duration in seconds.
  * @property {number[][]} coords - Ordered [lat, lon] pairs for polyline drawing.
  * @property {string[]} supermarketIds - Unique supermarket ids on this route.
  * @property {number[]} matrixIndices - Matrix indices (1-based) in visit order.
@@ -203,8 +204,10 @@ export function useSupermarketDiscovery() {
   }
 
   /**
-   * Query the OSRM Table Service for a driving distance matrix between the
-   * origin and all supermarkets. Index 0 is always the user's location.
+   * Query the OSRM Table Service for a driving distance AND duration matrix
+   * between the origin and all supermarkets. Index 0 is always the user's
+   * location. Both matrices are fetched in a single request using
+   * `annotations=duration,distance` for efficiency.
    *
    * When the server responds with HTTP 400 (too many coordinates or other
    * validation error), `null` is returned instead of throwing so the caller
@@ -212,13 +215,15 @@ export function useSupermarketDiscovery() {
    *
    * @param {{lat: number, lng: number}} user - Origin coordinate.
    * @param {DiscoveredSupermarket[]} stores - Supermarkets to include.
-   * @returns {Promise<number[][]|null>} Distance matrix in meters, or null.
+   * @returns {Promise<{distances: number[][], durations: number[][]}|null>}
+   *   Object with `distances` (meters) and `durations` (seconds) matrices, or
+   *   null when the request fails.
    */
   async function fetchDistanceMatrix(user, stores) {
     const coordsStr = [`${user.lng},${user.lat}`, ...stores.map((s) => `${s.lon},${s.lat}`)].join(
       ';',
     )
-    const url = `${OSRM_TABLE_URL}/${coordsStr}?annotations=distance`
+    const url = `${OSRM_TABLE_URL}/${coordsStr}?annotations=duration,distance`
 
     const response = await fetch(url)
     if (response.status === 400) {
@@ -230,10 +235,10 @@ export function useSupermarketDiscovery() {
       throw new Error(`OSRM Fehler: ${response.status}`)
     }
     const json = await response.json()
-    if (json.code !== 'Ok' || !Array.isArray(json.distances)) {
+    if (json.code !== 'Ok' || !Array.isArray(json.distances) || !Array.isArray(json.durations)) {
       return null
     }
-    return json.distances
+    return { distances: json.distances, durations: json.durations }
   }
 
   /**
@@ -262,8 +267,9 @@ export function useSupermarketDiscovery() {
    * @param {{lat: number, lng: number}} userOrigin - Origin coordinate.
    * @returns {RouteOption[]} Valid route options sorted by total distance.
    */
-  function buildRoutes(matrix, stores, userOrigin) {
+  function buildRoutes(matrixData, stores, userOrigin) {
     if (stores.length === 0) return []
+    const { distances: matrix, durations: durationMatrix } = matrixData
 
     // 1. Filter out stores that are unreachable from the origin (OSRM
     //    returns null when no road route exists).
@@ -345,34 +351,40 @@ export function useSupermarketDiscovery() {
     }
 
     /**
-     * Compute the total round-trip distance for a given ordering of matrix
-     * indices: origin -> stores[perm] -> origin.
+     * Compute the total round-trip distance AND duration for a given ordering
+     * of matrix indices: origin -> stores[perm] -> origin.
      * @param {number[]} perm - Matrix indices (1-based) in visit order.
-     * @returns {number|null} Total distance in meters, or null if any
-     *   segment is unreachable.
+     * @returns {{distance: number, duration: number}|null} Totals in meters
+     *   and seconds, or null if any segment is unreachable.
      */
-    function roundTripDistance(perm) {
-      let total = 0
+    function roundTrip(perm) {
+      let distance = 0
+      let duration = 0
       let current = 0 // origin
       for (const idx of perm) {
         const d = matrix[current][idx]
-        if (d == null) return null
-        total += d
+        const t = durationMatrix[current][idx]
+        if (d == null || t == null) return null
+        distance += d
+        duration += t
         current = idx
       }
       const back = matrix[current][0]
-      if (back == null) return null
-      total += back
-      return total
+      const backT = durationMatrix[current][0]
+      if (back == null || backT == null) return null
+      distance += back
+      duration += backT
+      return { distance, duration }
     }
 
     /**
      * Build the route option object from a permutation of candidate indices.
      * @param {number[]} candidatePerm - Indices into `candidates`.
-     * @param {number} total - Total driving distance in meters.
+     * @param {number} totalDistance - Total driving distance in meters.
+     * @param {number} totalDuration - Total driving duration in seconds.
      * @returns {RouteOption}
      */
-    function toRouteOption(candidatePerm, total) {
+    function toRouteOption(candidatePerm, totalDistance, totalDuration) {
       const stops = candidatePerm.map((ci) => candidates[ci].store)
       const matrixIndices = candidatePerm.map((ci) => candidates[ci].index)
       const coords = [
@@ -384,7 +396,8 @@ export function useSupermarketDiscovery() {
       return {
         id: supermarketIds.join('+'),
         stops,
-        totalDistance: total,
+        totalDistance,
+        totalDuration,
         coords,
         supermarketIds,
         matrixIndices,
@@ -402,14 +415,14 @@ export function useSupermarketDiscovery() {
         let best = null
         for (const perm of permutations(combo)) {
           const matrixPerm = perm.map((ci) => candidates[ci].index)
-          const dist = roundTripDistance(matrixPerm)
-          if (dist == null) continue
-          if (!best || dist < best.dist) {
-            best = { perm, dist }
+          const trip = roundTrip(matrixPerm)
+          if (trip == null) continue
+          if (!best || trip.distance < best.distance) {
+            best = { perm, distance: trip.distance, duration: trip.duration }
           }
         }
         if (!best) continue
-        const option = toRouteOption(best.perm, best.dist)
+        const option = toRouteOption(best.perm, best.distance, best.duration)
         const existing = bestByCombination.get(option.id)
         if (!existing || option.totalDistance < existing.totalDistance) {
           bestByCombination.set(option.id, option)
@@ -469,9 +482,9 @@ export function useSupermarketDiscovery() {
       const pruned = pruneOuterStores(stores, userOrigin)
       supermarkets.value = pruned
 
-      const matrix = await fetchDistanceMatrix(userOrigin, pruned)
+      const matrixData = await fetchDistanceMatrix(userOrigin, pruned)
 
-      if (matrix == null) {
+      if (matrixData == null) {
         // OSRM rejected the request (e.g. too many coordinates even after
         // pruning, or a 400 error). Fall back to showing the discovered
         // supermarkets as selectable badges without route calculations.
@@ -479,7 +492,7 @@ export function useSupermarketDiscovery() {
         return
       }
 
-      routes.value = buildRoutes(matrix, pruned, userOrigin)
+      routes.value = buildRoutes(matrixData, pruned, userOrigin)
 
       // Only keep supermarkets that are actually reachable via the road
       // network (OSRM returns null for unreachable coordinates) and that

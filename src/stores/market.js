@@ -22,6 +22,22 @@ export const useMarketStore = defineStore('market', () => {
   const selectedMarkets = useLocalStorage('korbkumpel.selectedMarkets', [])
 
   /**
+   * Total driving distance (meters) for the currently selected supermarket
+   * combination, as computed by the OSRM Table Service. Persisted so the
+   * rest of the app can display it without re-running the discovery.
+   * @type {import('vue').Ref<number>}
+   */
+  const routeDistance = useLocalStorage('korbkumpel.routeDistance', 0)
+
+  /**
+   * Total driving duration (seconds) for the currently selected supermarket
+   * combination, as computed by the OSRM Table Service. Persisted so the
+   * rest of the app can display it without re-running the discovery.
+   * @type {import('vue').Ref<number>}
+   */
+  const routeDuration = useLocalStorage('korbkumpel.routeDuration', 0)
+
+  /**
    * Comma separated list of selected supermarket ids, ready to be injected
    * into a Typesense `filter_by` expression.
    * @type {import('vue').ComputedRef<string>}
@@ -44,6 +60,18 @@ export const useMarketStore = defineStore('market', () => {
   }
 
   /**
+   * Persist the driving route metrics (distance + duration) for the current
+   * selection. Called by the supermarket modal whenever the user picks a
+   * combination.
+   * @param {number} distance - Total driving distance in meters.
+   * @param {number} duration - Total driving duration in seconds.
+   */
+  function setRouteMetrics(distance, duration) {
+    routeDistance.value = Math.max(0, Number(distance) || 0)
+    routeDuration.value = Math.max(0, Number(duration) || 0)
+  }
+
+  /**
    * Toggle a single supermarket id in the selection.
    * @param {string} id - Supermarket id to toggle.
    */
@@ -59,13 +87,18 @@ export const useMarketStore = defineStore('market', () => {
   /** Reset the selection back to empty. */
   function clearMarkets() {
     selectedMarkets.value = []
+    routeDistance.value = 0
+    routeDuration.value = 0
   }
 
   return {
     selectedMarkets,
+    routeDistance,
+    routeDuration,
     filterExpression,
     hasSelection,
     setMarkets,
+    setRouteMetrics,
     toggleMarket,
     clearMarkets,
   }
